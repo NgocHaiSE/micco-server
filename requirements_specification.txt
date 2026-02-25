@@ -1,0 +1,5 @@
+Documents will be uploaded by users.
+Each user will have a role.
+Each user will belong to a department.
+Only users belonging to a specific department can view documents from that department.
+add table serving embedding text for chunk

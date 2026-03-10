@@ -1,0 +1,379 @@
+% This is samplepaper.tex, a sample chapter demonstrating the
+% LLNCS macro package for Springer Computer Science proceedings;
+% Version 2.21 of 2022/01/12
+%
+
+\documentclass[runningheads]{llncs}
+%\usepackage[utf8]{inputenc}
+\usepackage{fontspec}
+\usepackage{polyglossia}
+\usepackage{makecell}
+\setmainlanguage{english}
+\setotherlanguage{vietnamese}
+
+\newfontfamily\vietnameseFont{Times New Roman}
+
+%
+%\usepackage[T1]{fontenc}
+%\usepackage[utf8]{inputenc}
+% T1 fonts will be used to generate the final print and online PDFs,
+% so please use T1 fonts in your manuscript whenever possible.
+% Other font encondings may result in incorrect characters.
+%
+\usepackage{graphicx}
+% Used for displaying a sample figure. If possible, figure files should
+% be included in EPS format.
+%
+% If you use the hyperref package, please uncomment the following two lines
+% to display URLs in blue roman font according to Springer's eBook style:
+%\usepackage{color}
+%\renewcommand\UrlFont{\color{blue}\rmfamily}
+%\urlstyle{rm}
+%
+\begin{document}
+%
+\title{An Enterprise Knowledge Graph-Driven Agentic RAG Framework: A Case Study of Material Procurement at MICCO}
+%
+%\titlerunning{Abbreviated paper title}
+% If the paper title is too long for the running head, you can set
+% an abbreviated paper title here
+%
+\author {Dinh Dao Dang\inst{1}\orcidID{0009-0009-1680-7777} \and
+Hien Nguyen Thi \thanks{Corresponding author: hiennt@lqdtu.edu.vn},\inst{2}\orcidID{0000-0001-9590-7673} \and
+Hoai Nguyen Xuan\inst{3}\orcidID{0000-0003-2533-5723} \and
+Tuan Anh Nguyen Khac\inst{2} \orcidID{0009-0005-7843-4583} \and
+Ngoc Hai Nguyen\inst{2} \orcidID{0009-0002-1561-1675}\and Duc Manh Luong \inst{4} \orcidID{0009-0007-5104-2568}}
+%
+\authorrunning{Hien Nguyen et al.}
+% First names are abbreviated in the running head.
+% If there are more than two authors, 'et al.' is used.
+%
+\institute{Le Quy Don Technical University, 236 Hoang Quoc Viet, Ha Noi, 100000, Vietnam \email{hiennt@lqdtu.edu.vn \and
+Vinacomin - Mining Chemical Industry Holding Corporation Limited (Micco), Lane 1, Phan Dinh Giot Street, Ha Noi, 100000, Vietnam \and Faculty of Information Technology, HUTECH University, 475A Dien Bien Phu, Ho Chi Minh City, 72308, Vietnam \and School of Information and Communication Technology, HUST University, 1 Dai Co Viet, Ha Noi, 100000, Vietnam }\\
+%\url{http://www.springer.com/gp/computer-science/lncs} \and
+%ABC Institute, Rupert-Karls-University Heidelberg, Heidelberg, Germany\\
+%\email{\{abc,lncs\}@uni-heidelberg.de}
+}
+%
+\maketitle              % typeset the header of the contribution
+%
+\begin{abstract}
+Material procurement is a core operational function of heavy industry enterprises such as the Vinacomin Mining Chemical Industry Holding Corporation (MICCO), where decision-making processes depend on the integration of technical, operational, and business information. In practice, MICCO’s data environment is characterized by fragmentation across heterogeneous information systems, semantic inconsistency between datasets, and the lack of explicit semantic relationships among entities. Although technical metadata is available, it is insufficient to represent business context, process semantics, and organizational knowledge structures, resulting in isolated data repositories rather than an integrated enterprise knowledge space.
+
+This study proposes an integrated framework combining Enterprise Knowledge Graph–based GraphRAG and AI Agent architectures to support semantic search, knowledge integration, and organizational data governance. A domain knowledge structure for MICCO’s material procurement activities is developed, distinguishing explicit operational knowledge from tacit organizational knowledge and formalizing concepts, entities, and relations through ontological modeling. The proposed three-phase methodology—Knowledge Capture, Implementation, and Access—enables structured knowledge representation, semantic integration across heterogeneous systems, and reasoning-based access mechanisms. This approach supports complex inference tasks and provides a unified semantic layer that transforms fragmented enterprise data into an integrated organizational knowledge infrastructure.
+\keywords{Enterprise Knowledge Graph \and MICCO \and Material Procurement \and Ontology \and Knowledge Management \and RAG Architecture \and AI Agent.}
+\end{abstract}
+
+\section{Introduction}
+%Material procurement at MICCO, a subsidiary of the Vietnam National Coal-Mineral Industries Holding Corporation (TKV), is a complex process involving multiple stakeholders and strict regulatory compliance. Currently, MICCO faces a "knowledge island" paradox: while data is exploding, the most valuable assets—organizational knowledge—are often hidden in "silos" or lost when experienced employees retire. Initial surveys indicate that knowledge is stored across at least five different types of repositories, including formal systems (ePortal, Biportal), specialized software (AutoCAD), and informal storage such as personal computers or paper archives.
+
+%The gap between physical data "bits" and business "meaning" results in $100\%$ of analyzed units reporting excessive time spent on searching for information. To bridge this gap, we introduce the Enterprise Knowledge Graph (EKG). An EKG represents a collection of real-world concepts and relationships in a graph format, serving as a "digital twin" of the enterprise's information system. Unlike traditional databases, EKG stores context and semantics, enabling machines to "understand" business operations.
+
+%The objectives of this study are: (1) to analyze and categorize MICCO’s material procurement knowledge; (2) to design an ontology and mapping patterns to connect relational databases with the EKG; and (3) to build a prototype system that integrates an AI Assistant using RAG technology for intelligent knowledge access.
+\paragraph{Context and Strategic Importance}: In heavy industry and mining support operations, material resource management directly affects the production stability, system safety, and regulatory compliance. At Vinacomin Mining Chemical Industry Holding Corporation (MICCO), a subsidiary of the Vietnam National Coal–Mineral Industries Group (TKV), material procurement spans a heterogeneous supply network that includes chemical inputs, industrial equipment, and specialized heavy machinery, each governed by different safety, storage, and handling constraints.
+
+Unlike conventional inventory systems, MICCO’s material management processes are constrained by National Technical Regulations (QCVN), internal safety protocols, and sector-specific compliance procedures. As a result, operational effectiveness depends not only on data availability but on the ability to systematically organize, interlink, and interpret material information across regulatory, technical, and operational dimensions. The integration of these heterogeneous information layers therefore becomes a strategic requirement for risk control, operational reliability, and decision support within the organization.
+\paragraph{The Challenge: Semantic Complexity and the Metadata Gap} 
+Despite the availability of large volumes of digital records, large enterprises such as Vinacomin Mining Chemical Industry Holding Corporation (MICCO) face structural difficulties in organizing and interpreting enterprise data. Information is distributed across heterogeneous systems, including transactional data in ERP platforms, planning and reporting data in spreadsheets, and technical documentation in unstructured formats such as PDF files. These data sources are developed for different operational purposes and follow incompatible data models and semantics.
+
+Although technical metadata (e.g., database schemas, file attributes, system-level descriptors) is generally available, it does not encode business rules, process semantics, regulatory constraints, or domain-specific relationships. As a result, enterprise information systems can record transactional facts (e.g., what materials were procured and from which suppliers), but they cannot represent decision rationales, safety dependencies, or regulatory linkages, such as the relationships between materials, geological safety standards, and operational risk requirements, without extensive manual modeling. This structural limitation creates a persistent semantic gap between data representations and organizational knowledge, leaving critical knowledge assets distributed across isolated information systems rather than integrated into a coherent enterprise knowledge structure.
+\paragraph{Limitations of Traditional RAG Approaches} In enterprise information systems, Retrieval-Augmented Generation (RAG) solutions are commonly implemented on top of vector databases that support embedding-based similarity search. While this architecture is effective for document retrieval tasks, it exhibits structural limitations when applied to enterprise knowledge environments. Vector-based retrieval mechanisms operate on local semantic similarity and treat documents as independent text fragments, which leads to the retrieval of contextually disconnected segments rather than semantically integrated knowledge units.
+
+This retrieval paradigm does not encode explicit relationships, hierarchical dependencies, or process structures that characterize enterprise data. Consequently, queries that require multi-entity reasoning, dependency tracing, or cross-system integration cannot be reliably resolved through vector similarity alone. For example, answering a multi-hop query such as identifying suppliers associated with safety incidents in underground mining operations requires the integration of procurement records, safety incident reports, regulatory compliance documents, and project specifications within a unified relational model. Without explicit relational representations and reasoning mechanisms, traditional RAG pipelines lack the structural capacity to support such inference tasks.
+\paragraph{The Solution: Synergizing GraphRAG and AI Agents}: To address the structural limitations of vector-based RAG systems, this study proposes an integrated framework that combines GraphRAG—based on Enterprise Knowledge Graph (EKG) representations—with AI Agent–based orchestration mechanisms. The core design principle is the explicit grounding of generative models in a structured knowledge representation layer, enabling retrieval and reasoning processes to operate over semantically defined entities and relations rather than isolated text fragments.
+\begin{itemize}
+    
+\item GraphRAG Component: The Enterprise Knowledge Graph provides a formal representation of organizational knowledge, in which entities (e.g., suppliers, materials, safety standards) and their relationships are explicitly modeled. Retrieval operations are therefore performed through relational traversal (e.g., Supplier → Material → Safety Standard) instead of similarity-based matching alone, enabling context-aware access to information and semantically coherent response generation.
+\item AI Agents Component: The framework incorporates AI Agents responsible for workflow orchestration and task coordination. These agents manage query decomposition, determine appropriate retrieval strategies (graph-based retrieval versus vector-based retrieval), and execute reasoning procedures across heterogeneous knowledge sources. This architecture supports multi-step reasoning, cross-domain integration, and structured response construction.
+
+\end{itemize}
+\paragraph{Contributions of this Paper} This study presents a complete methodology for constructing the Material Enterprise Knowledge Graph and implementing the hybrid GraphRAG–Agent framework for Vinacomin Mining Chemical Industry Holding Corporation (MICCO). The main contributions include: 
+\begin{itemize}
+\item the development of a domain-specific ontology for material procurement;
+\item a data ingestion and structured pipeline for heterogeneous sources (including OCR and NLP processing); and
+\item the design of an agent-based RAG architecture that supports knowledge integration, governance mechanisms, and enterprise search functions, enabling the transformation of distributed organizational data into an integrated operational knowledge infrastructure.
+\end{itemize}
+
+\section{Literature Review}
+
+Knowledge Graphs (KGs) provide a formal framework for structured knowledge representation based on graph models in which entities are represented as nodes and semantic relations as labeled edges. This representation enables the explicit encoding of domain concepts, relationships, and constraints, supporting reasoning, integration, and query operations over heterogeneous data sources.
+
+Recent surveys, including the review by Kejriwal \cite{kejriwal2022knowledge}, 
+%citation needed
+document the expansion of knowledge graph research and its methodological diversification over the past decade, particularly in areas such as semantic search, question answering, and structured information retrieval. These developments reflect the increasing role of graph-based knowledge representations as a core infrastructure for building semantically grounded intelligent information systems rather than as standalone data integration tools \cite{abu2021domain}.
+
+Modern knowledge management systems increasingly adopt semantic technologies to support structured representation, integration, and reasoning over organizational data. Mohammad et al. (2025) \cite{mohammad2025knowledge} conducted a systematic review of 73 studies examining the integration of Knowledge Graphs (KGs), RDF, and SPARQL in business management contexts. Their analysis shows that semantic technologies improve knowledge management capabilities by enabling context-aware retrieval and semantic disambiguation mechanisms rather than keyword-based search alone.
+
+Similarly, Macedo et al. (2023)\cite{macedo2023knowledge} identify Knowledge Graphs as a core structural asset in organizational knowledge systems, emphasizing their role in supporting integrated data representations and decision-support processes. From an architectural perspective, Galkin et al. \cite{galkin2017enterprise} analyze alternative Enterprise Knowledge Graph (EKG) integration strategies, distinguishing between consolidated (“unified”) and virtualized (“federated”) architectures and identifying trade-offs in scalability, consistency, and governance. Their work positions EKGs as a structural integration layer for enterprise knowledge rather than as a standalone data repository.
+
+The applicability of EKG architectures extends to domains requiring complex reasoning and high reliability. In the financial sector, Atzeni et al. (2020)\cite{atzeni2020weaving} developed the “Vada-Link” framework for the Central Bank of Italy, combining property graph models with logic-based reasoning to support recursive inference tasks such as company control and asset eligibility analysis. In the logistics and safety domain, Zhang et al. (2019) \cite{zhang2019construction} addressed fragmented regulatory knowledge in Maritime Dangerous Goods transport by constructing a domain-specific knowledge graph (KGMDG) that integrates safety regulations (e.g., IMDG Code) with chemical attributes. Their use of Semantic Web Rule Language (SWRL) enables formal reasoning over segregation and safety constraints.
+
+These studies provide methodological and architectural foundations for applying Enterprise Knowledge Graphs to MICCO’s material procurement and safety compliance context, particularly for tasks requiring semantic integration, regulatory reasoning, and cross-domain knowledge linkage.
+
+
+Recent research increasingly explores the integration of symbolic knowledge representations and data-driven generative models within neuro-symbolic AI frameworks. Dehal et al. (2025) \cite{dehal2025knowledge} analyze the complementary roles of Knowledge Graphs (KGs) and Large Language Models (LLMs), showing that KGs provide structured grounding mechanisms that reduce hallucination risks, while LLMs support natural language interfaces for accessing graph-based knowledge representations.
+
+To address the high manual cost of Enterprise Knowledge Graph (EKG) construction, Sun et al. (2025) \cite{sun2025docs2kg} propose the “Docs2KG” framework, which applies human–LLM collaboration to extract structured knowledge from heterogeneous document collections, enabling scalable ingestion of unstructured enterprise data into unified graph representations.
+
+In parallel, research is converging toward agent-oriented retrieval and reasoning architectures. Belleguie (2025)\cite{belleguie2025graphrag} introduces a GraphRAG framework that integrates LLM-based AI agents with enterprise knowledge graphs, demonstrating improved performance over conventional RAG pipelines in tasks such as querying, classification, and enterprise data discovery. Similarly, Buehler (2025) \cite{buehler2025agentic} proposes the concept of “Agentic Deep Graph Reasoning,” in which autonomous agents operate over graph-based knowledge structures to support self-organizing reasoning processes and distributed knowledge integration.
+
+Together, these studies define an emerging research direction in which graph-based knowledge representations, generative models, and agent architectures are combined to support scalable reasoning, semantic integration, and intelligent enterprise knowledge management.
+% Should add a picture of overall system architecture
+% components, tasks, information flows
+\section{Proposed Method}
+This study presents an integrated architecture combining Enterprise Knowledge Graphs (EKG) with an agent-based Retrieval-Augmented Generation (RAG) model to enhance structured retrieval and reasoning beyond conventional vector-based approaches. The system is organized into three functional components: (1) a semantic layer for EKG construction and knowledge modeling, (2) an orchestration layer for agent-based task coordination and query control, and (3) a generative interface layer that integrates RAG with locally deployed language models for grounded natural language interaction. This design which is shown in Figure \ref{fig:framework} enables structured knowledge access, coordinated reasoning, and controlled generative responses within an enterprise information environment. 
+\begin{figure}
+    \centering
+    \includegraphics[width=0.8\linewidth]{Framework.jpg}
+    \caption{EKG with an agent-based RAG Framework}
+    \label{fig:framework}
+\end{figure}
+\subsection{Enterprise Knowledge Graph Construction}
+To address data fragmentation and semantic inconsistency, we construct an Enterprise Knowledge Graph (EKG) as a unified semantic infrastructure for organizational knowledge representation. The EKG is formally modeled as a semantic network graph $G=<C,E,R>$, where:
+\begin{itemize}
+\item C (Concepts): Represents the ontological schema (classes) defined via Web Ontology Language (OWL). This conceptual layer acts as the "skeleton," defining abstract business entities and their permissible interactions.
+\item E (Entities): Represents the instance layer, populated by extracting real-world data from heterogeneous sources (structured databases, semi-structured logs, and unstructured documents).
+\item R (Relations): Represents the semantic edges connecting entities (e.g., relates\_to, depends\_on), allowing the system to perform multi-hop traversal and discover hidden connections not explicitly stated in the raw data.
+\end{itemize}
+This structure unifies previously isolated data silos into a coherent semantic graph, enabling efficient traversal and consistency validation using SHACL constraints.
+\subsection{Agentic Framework}
+Unlike linear RAG pipelines that rely on single-query retrieval, the proposed framework adopts a Multi-Agent System (MAS) architecture to support complex reasoning processes. Inspired by the Mixture-of-Experts paradigm, the system is organized around a central orchestration component that coordinates multiple specialized agents which illustrated in Figure \ref{fig:AgentFramework}:
+\begin{enumerate}
+    \item Router Agent (The Controller): This component performs query intent analysis and classifies user requests to determine the appropriate retrieval and reasoning strategy (e.g., direct factual retrieval or multi-step reasoning workflows), subsequently dispatching tasks to the corresponding agents.
+\item Retrieval Agent (The Researcher): This agent interacts with the data layer using a hybrid retrieval strategy that integrates:
+\begin{itemize}
+    \item Vector Search: Vector-based retrieval, to capture semantic similarity in unstructured text corpora stored in vector databases (e.g., Milvus);
+    \item Graph Traversal: Graph-based traversal, to exploit explicit relationships and hierarchical structures within the Enterprise Knowledge Graph (EKG) stored in graph databases (e.g., Neo4j), enabling context-aware entity retrieval.
+    \end{itemize}
+\item Reasoning Agent (The Analyst): This agent integrates structured and unstructured results, performs cross-source validation, and synthesizes the final response, ensuring that all outputs are explicitly grounded in retrieved evidence.
+\end{enumerate}
+\begin{figure}
+    \centering
+    \includegraphics[width=0.5\linewidth]{AgentFrameworks.jpg}
+    \caption{Agentic Workflow Concept}
+    \label{fig:AgentFramework}
+\end{figure}
+\subsection{The Generative Interface: RAG and Local LLM}
+The final component integrates Retrieval-Augmented Generation (RAG) with locally deployed Large Language Models (LLMs).
+\begin{itemize}
+    \item Privacy-First Deployment: To comply with data security and regulatory constraints on sensitive industrial information, open-source LLMs (e.g., Llama 3, Mistral) are deployed in on-premise or private cloud environments, ensuring that proprietary data remains within institutional infrastructure and is not transmitted to external APIs.
+\item GraphRAG Mechanism: Structured contextual information from the Enterprise Knowledge Graph (EKG) is provided to the LLM during generation, enabling graph-grounded retrieval and response synthesis. This approach supports context-aware reasoning over domain-specific entities and relations, improving interpretability and response consistency compared to conventional vector-based RAG pipelines.
+\end{itemize}
+% Again, should add picture on agentic architecture how they interact
+
+\section{Case Study: Application in Material Procurement at MICCO}
+To validate the proposed Agentic GraphRAG framework, we apply it to the material procurement domain of MICCO, which is characterized by complex operational processes, strict safety regulations, and heterogeneous data sources.
+\subsection{Business Context and Challenges}
+MICCO operates a multi-stage supply chain covering the production and trading of industrial explosives (VLNCN) and mining chemicals. The material management process consists of eight core stages, ranging from demand planning to liquidation. A key challenge is the fragmentation of organizational data across multiple systems and formats:
+\begin{itemize}
+    \item 
+
+Structured data: Inventory records and transaction histories stored in enterprise systems (ERP, Biportal, SQL Server);
+\item 
+Unstructured data: Safety regulations (QCVN), technical documentation (e.g., blasting passports), and supplier contracts stored as PDF or scanned documents;
+\item 
+Experiential knowledge: Operational practices and incident-handling procedures held by domain experts.
+\end{itemize}
+Answering complex operational queries, such as identifying suppliers associated with non-compliant emulsion explosives and the applicable regulatory constraints in a given period, requires integrating procurement records, quality inspection logs, and regulatory documents—capabilities that exceed the limits of traditional keyword-based retrieval and conventional RAG pipelines.
+
+\subsection{Building the Material Knowledge Graph (M-EKG)}
+We constructed the M-EKG to serve as the semantic backbone for the system.
+\paragraph{Ontology Modeling} Using the Web Ontology Language (OWL), we defined a domain-specific ontology centered around seventeen core concepts ($\mathcal{C}$): \textit{Material} (VatTu), \textit{Supplier} (NhaCungCap), \textit{Contract} (HopDong), \textit{Warehouse} (Kho), \textit{Regulation} (QuyDinh), \textit{Incident} (SuCo), \textit{Purchase Order} (DonHang), \textit{Procurement Plan} (KeHoachMuaSam), \textit{Quotation} (ChaoGia), \textit{Receipt Note} (PhieuNhapKho), \textit{Delivery Note} (PhieuXuatKho), \textit{Construction Site} (CongTruong), \textit{Inspector} (NguoiKiemTra), \textit{Certificate} (ChungChi), \textit{Material Category} (DanhMucVatTu), \textit{Manufacturer} (NhaSanXuat), and \textit{Risk} (RuiRo). The ontology encompasses 38 semantic relations ($\mathcal{R}$) categorized into six functional groups. Key semantic relations include:
+
+\textbf{Procurement Chain:}
+\begin{itemize}
+    \item (:DonHang) -[BAO\_GOM]$\rightarrow$ (:VatTu)
+    \item (:NhaCungCap) -[CUNG\_CAP]$\rightarrow$ (:VatTu)
+    \item (:ChaoGia) -[TU\_NHA\_CUNG\_CAP]$\rightarrow$ (:NhaCungCap)
+    \item (:HopDong) -[DUOC\_LAP\_TU]$\rightarrow$ (:ChaoGia)
+\end{itemize}
+
+\textbf{Storage \& Logistics:}
+\begin{itemize}
+    \item (:PhieuNhapKho) -[NHAP\_VAT\_TU]$\rightarrow$ (:VatTu)
+    \item (:PhieuXuatKho) -[XUAT\_DEN]$\rightarrow$ (:CongTruong)
+\end{itemize}
+
+\textbf{Quality \& Compliance:}
+\begin{itemize}
+    \item (:VatTu) -[TUAN\_THU\_THEO]$\rightarrow$ (:QuyDinh)
+    \item (:VatTu) -[CO\_CHUNG\_CHI]$\rightarrow$ (:ChungChi)
+    \item (:PhieuKiemTra) -[KIEM\_TRA]$\rightarrow$ (:VatTu)
+\end{itemize}
+
+\textbf{Risk \& Incident Management:}
+\begin{itemize}
+    \item (:SuCo) -[LIEN\_QUAN\_DEN]$\rightarrow$ (:VatTu)
+    \item (:SuCo) -[LIEN\_QUAN]$\rightarrow$ (:NhaCungCap)
+    \item (:RuiRo) -[LIEN\_QUAN\_VAT\_TU]$\rightarrow$ (:VatTu)
+\end{itemize}
+
+\textbf{Traceability:}
+\begin{itemize}
+    \item (:VatTu) -[NGUON\_GOC]$\rightarrow$ (:NhaCungCap)
+    \item (:VatTu) -[SAN\_XUAT\_BOI]$\rightarrow$ (:NhaSanXuat)
+    \item (:HopDong) -[GIAO\_HANG]$\rightarrow$ (:PhieuNhapKho)
+\end{itemize}
+
+\paragraph{Data Ingestion Pipeline} We implemented a dual-path ingestion pipeline to populate the graph ($\mathcal{E}$):
+\begin{itemize}
+    \item  Structured Path: We used R2RML to map relational data from the ERP system (e.g., table DIM\_VATTU) directly to graph nodes (e.g., micco:Material), assigning unique URIs based on material codes.
+\item Unstructured Path: For scanned documents like the "Blue Books" and QCVN standards, we utilized an OCR engine (Tesseract/PaddleOCR) fine-tuned for Vietnamese technical terms. The extracted text was chunked and embedded into a Vector Database (Milvus), while metadata (Date, Author) was linked to the corresponding nodes in the Graph Database (Neo4j).
+\end{itemize}
+\subsection{Agentic Workflow Design}
+Instead of a monolithic processing chain, we deployed a system of specialized AI Agents orchestrated by LangGraph to handle complex procurement queries. The workflow comprises three distinct agents:
+\paragraph{The Router Agent (Intent Classifier)} This is the entry point. It uses a Local LLM (Llama 3) to analyze the user's natural language query and classify it into specific intents:
+\begin{itemize}
+    
+\item Fact Retrieval: E.g., "What is the inventory level of Ammonium Nitrate?" → Routes to Database Agent.
+\item Compliance Check: E.g., "Does the current storage of detonators meet QCVN 01:2019?" → Routes to Retrieval Agent.
+\item Complex Reasoning: E.g., "Analyze the correlation between Supplier A's materials and recent blasting failures." → Routes to the Multi-hop Reasoning Agent.
+\paragraph{The Retrieval Agent (Hybrid Search)} This agent possesses two "tools" for information gathering:
+\begin{itemize}
+    
+\item  Vector Tool: Queries Milvus to find semantically similar text chunks from safety regulations and contracts.
+\item Graph Tool: Executes Cypher queries against Neo4j to traverse structural relationships (e.g., finding all Incidents connected to a specific Supplier via Material nodes). This hybrid approach ensures that both the content (text) and the context (relationships) are retrieved.
+\end{itemize}
+\paragraph{The Reasoner Agent (Analyst)} Acting as the final synthesizer, this agent receives the structured data from the Graph and unstructured context from the Vector DB. It utilizes the LLM to generate a coherent answer. Crucially, the agent is configured with a "Citation Constraint", requiring it to strictly reference the source documents (e.g., "According to Contract 123..." or "Based on Incident Report 456...") to ensure trustworthiness and mitigate hallucinations.
+\paragraph{Deployment Environment} To ensure data sovereignty and security for sensitive mining data, the entire agent system, including the LLM and databases, is deployed On-Premise within MICCO’s private cloud infrastructure, utilizing Docker containers for scalability.
+%Again, it should have figure or flowchart
+%How EKG is used? Should have an example to show the neccessity of EKG in handling complicated reasoning for a MICCO business matters
+\end{itemize}
+\section{Results and Discussion}
+In MICCO’s regulated material procurement environment, conventional retrieval systems are unable to resolve complex queries due to the fragmentation of knowledge across structured transactional systems (e.g., ERP) and unstructured compliance documentation (e.g., scanned PDFs). As a result, operational decision-making often requires queries that jointly access and integrate both data modalities. Representative examples include:
+\begin{itemize}
+    \item Supplier Evaluation: Identifying suppliers offering 'Emulsion Explosives' below the 2024 ceiling price (Structured) AND holding a valid ISO 9001:2015 certificate from scanned dossiers (Unstructured).
+\item Safety Auditing: Finding warehouses storing 'Delay Detonators' with an expiration date of over 6 months (Structured) AND verifying if their physical layouts comply with QCVN 01:2019/BCT safety distance regulations (Unstructured).
+\end{itemize}
+Such multi-hop queries exceed the capabilities of standalone retrieval systems, motivating the adoption of the proposed Agentic GraphRAG architecture to support intent routing, multimodal data access, and integrated reasoning. To evaluate the framework, the system was tested using the Hybrid Competency Queries defined in the business context. The evaluation focuses on the ability of the multi-agent workflow to coordinate graph traversal and semantic retrieval processes in order to produce consistent and explainable responses for MICCO’s material procurement operations.
+\subsection{Agentic Workflow Execution and Graph Retrieval}
+When a user submits a complex query, the workflow is initiated by the Router Agent, which classifies the intent and delegates tasks. The core of the knowledge discovery relies on the Retrieval Agent (Search Agent), which interacts directly with the Knowledge Graph (Neo4j) via Cypher queries and the Vector Database via semantic search.
+\begin{figure}
+    \centering
+    \includegraphics[width=0.8\linewidth]{SearchAgent.jpg}
+    \caption{ Linked assets returned by the Retrieval Agent during a supplier evaluation query}
+    \label{fig:searchAgent}
+\end{figure}
+Figure \ref{fig:searchAgent} illustrates a typical output from the Retrieval Agent when exploring supplier networks within the MICCO Knowledge Graph.
+As seen in Figure \ref{fig:searchAgent}, rather than returning isolated text chunks, the Retrieval Agent extracts a highly interconnected sub-graph. The agent successfully identifies specific entities such as Suppliers (NhaCungCap node, e.g., Công ty CP Sơn Jotun Việt Nam, ID: 39), connected to specific Materials (Sơn epoxy), Procurement Plans (Mua sắm vật liệu Dự...), and Purchase Orders via explicit edges (TU\_NHA\_CUNG\_CAP, BAO\_GOM, THUOC\_KE\_HOACH). The node properties panel shows that the agent also retrieves vital metadata (e.g., Address, Supplier Capability Profile), providing the Reasoner Agent with a structured, hallucination-free context to formulate its final answer.
+\subsection{Resolution of Hybrid Competency Questions}
+The system's capability was validated through three specific real-world procurement scenarios at MICCO.
+
+Case 1: Safety and Inventory Auditing
+\begin{itemize}
+\item  User Query: "Which warehouses currently store 'Delay Detonators' (Kíp nổ vi sai) with an expiration date of more than 6 months, and do these warehouses comply with the safety distance regulations of QCVN 01:2019/BCT?"
+\item Agent Execution: The Retrieval Agent translates this intent into a structural graph query. It first matches inventory batches (LoHang) of 'Delay Detonators' and mathematically filters nodes where the shelf life exceeds 6 months using graph time functions. It then locates the associated warehouses (Kho) and checks for an optional compliance relationship (TUAN\_THU) with the regulation node (QuyChuan 'QCVN 01:2019/BCT').
+\item Result: The Reasoner Agent synthesizes the data to output a precise list of warehouses, their total valid stock, the nearest expiration date, and a definitive status ("Compliant" or "Needs Re-inspection"), effectively merging inventory math with regulatory compliance.
+\end{itemize}
+Case 2: Supplier Risk Assessment
+\begin{itemize}
+\item User Query: "Calculate the total value of contracts signed with 'Supplier A' in the last 3 years, and list the technical risks recorded in Inspection Minutes or Incident Reports related to this supplier."
+\item Agent Execution: The agent traverses multiple hops: Supplier → Contract (filtering by date >= past 3 years), Contract → Batch ← Inspection Minute (filtering for 'Technical Errors'), and Supplier → Material ← Incident Report.
+\item Result: The system accurately aggregates the total financial value over the specified timeframe (Structured data) while simultaneously collecting distinct technical failure descriptions (Unstructured textual data) from historical logs. This provides managers with a holistic, evidence-based vendor risk profile.
+\end{itemize}
+Case 3: Material Substitution and Design Compliance 
+\begin{itemize}
+    \item 
+User Query: "What available materials in the warehouse can replace 'Conveyor Belt B1000' while still ensuring the technical requirements of the approved 'Hầm lò Ngã Hai' project design?"
+\item Agent Execution: The Retrieval Agent queries the graph to find nodes connected to 'Băng tải B1000' via the TECHNICAL\_EQUIVALENT edge. It verifies that these substitutes have a positive stock level (soLuong > 0) in connected warehouses. Crucially, it traverses the Project → Design nodes to check if the substitute's parameters exist within the approved materials list.
+\item Result: The agent returns a list of viable substitutes, their exact storage locations, available quantities, and the technical justification for the substitution, ensuring uninterrupted and compliant mining operations.
+\end{itemize}
+\subsection{Discussion}
+The experimental evaluation indicates that the Agentic GraphRAG framework provides systematic advantages over conventional vector-based RAG approaches in enterprise settings.
+\begin{enumerate}
+    \item 
+
+ Multimodal reasoning: Unlike standard RAG, which relies primarily on semantic similarity and is limited in handling structured constraints (e.g., aggregation and temporal filtering), the proposed framework integrates semantic retrieval with graph-based relational reasoning. In the evaluated cases, the system performs multi-hop traversals (e.g., Supplier → Material → Incident → Regulation), enabling integrated reasoning across heterogeneous data sources.
+
+\item  Precision and traceability: Response generation is grounded in deterministic graph traversal operations. As a result, generated outputs can be traced to specific nodes and relations within the MICCO data graph, supporting explainability, auditability, and compliance with governance and safety verification requirements.
+
+\item  Semantic accessibility: By translating natural language queries into structured graph queries (e.g., Cypher) and mapping results back to domain concepts, the framework supports interaction with enterprise data without requiring direct knowledge of database schemas or query languages.
+\end{enumerate}
+%Should compare to baseline (only VetorDB and RAG) to highlight the importance of EKG and GraphRAG (or RAG to Graph?)
+\paragraph{Comparative Analysis with Baseline Models}
+To evaluate the effectiveness of our proposed, we compared its performance to four established baseline systems: (1) Traditional Search (TrdSer) (SQL Database + Keyword Search), (2) Standard RAG (StdRAG) (LLM + Vector Database), (3) Knowledge Graph QA (KGQA) (pure graph traversal without generative AI), and (4) Standard GraphRAG (StdGraRAG) (a linear pipeline combining Graph and Vector data without agentic routing). 
+We use a benchmark dataset consisting of 40 evaluation questions grouped into three categories:
+\begin{itemize}
+    \item Simple queries (single-question, single-source, clearly defined answers);
+\item Multi-hop reasoning queries (requiring inference across two or more entities or linked data tables);
+\item Hybrid queries (integrating structured data sources (SQL/Graph) with unstructured data (technical documents and regulations)).
+\end{itemize}
+To evaluate system performance, four evaluation metrics are defined as follows:
+METRIC 1: Hybrid Query Resolution\\
+\textbf{Definition:} Measures the system’s ability to correctly answer queries requiring joint reasoning over structured and unstructured data.\\
+\textbf{Evaluation:}
+Exact Match (EM): Exact match with ground truth.
+Token-level F1: Token overlap between output and reference.
+Answer Accuracy (ACC): Binary correctness (Correct/Incorrect).
+Primary metric: F1-score (balances precision and recall for variable-length answers).
+Hybrid Query (Q3) correctness criteria:
+An answer is considered correct iff it satisfies both:
+(a) quantitative values are exact (EM for numerical data), and
+(b) semantic explanation of regulations is valid (F1 ≥ 0.70).\\
+METRIC 2: Explainability and Traceability\\
+\textbf{Definition:} Measures the system’s ability to provide precise and verifiable sources for generated answers.\\
+\textbf{Evaluation:}
+\begin{itemize}
+    \item \textbf{Citation Precision (CP):} Proportion of provided citations that are correct and independently verifiable.
+    \[
+        CP = \frac{|\text{Valid citations}|}{|\text{Total citations}|}
+    \]
+
+    \item \textbf{Citation Recall (CR):} Proportion of required ground-truth sources that are correctly cited.
+    \[
+        CR = \frac{|\text{Valid citations}|}{|\text{Required GT sources}|}
+    \]
+
+    \item \textbf{Source Coverage Score (SCS):} F1-score of CP and CR.
+
+    \item \textbf{Granularity Level (GL):} Citation detail level:
+    \begin{itemize}
+        \item L0: No citation
+        \item L1: Document/table name only
+        \item L2: Document + page / table + filter condition
+        \item L3: Specific Node ID / Record ID + graph relation path
+    \end{itemize}
+\end{itemize}
+METRIC 3: Hallucination Rate
+\textbf{Definition:} Measures the proportion of answers containing unsupported or unverifiable information not grounded in the retrieved sources.\\
+\textbf{Evaluation:}
+RAGAS Faithfulness Score (automatic): 
+    The RAGAS framework is used to measure the proportion of statements in the generated answer that can be logically inferred from the retrieved context.
+    \[
+        \text{Hallucination Rate} = 1 - \text{Faithfulness Score}
+    \]
+METRIC 4: Latency\\
+\textbf{Definition:} Measures the computational efficiency of each architecture in terms of end-to-end response time from query submission to complete answer generation.\\
+\textbf{Evaluation:}
+\begin{itemize}
+    \item Average Latency (AL): Mean response time (in seconds) over 40 evaluation queries.
+\end{itemize}
+The table \ref{tab:results} summarizes the experimental results of the comparative evaluation of the models.
+\begin{table}[t]
+\centering
+\caption{Model comparison results}
+\label{tab:results}
+\begin{tabular}{lcccccc}
+\hline
+Model & Hybrid F1 & \makecell{Q3 Accuracy\\(EM+F1)} & SCS & \makecell{Granularity \\Level (GL)}& \makecell{Halluc. \\Rate} & Latency \\
+\hline
+A1. Traditional (SQL)      & 15\% & 4\% & \textbf{0.95} & L2 & \textbf{2\%} & \textbf{<3.5}\\
+A2. Standard RAG        & 55\% & 31\% & 0.65 & L1 & 7\% & 5.5\\
+A3. KG-Only (Cypher)     & 61\% & 45\% & 0.85 & L3 & 5\% & 7\\
+A4. Standard GraphRAG    & 87\% & 75\% & 0.92 & L3 & 4\% & 15\\
+A5. GraphRAG Agents & \textbf{91\%} & \textbf{78\%} & \textbf{0.92} & L4 & 3\% & 35\\
+\hline
+\end{tabular}
+\end{table}
+The experimental results indicate a clear trade-off between reasoning quality and real-time performance. The strongest methods A5 dominate in hybrid query accuracy, explainability, and hallucination control—particularly for complex multi-step queries. While the iterative reasoning process introduces additional computational overhead, the resulting latency represents a manageable trade-off for applications that prioritize decision quality, robustness, and reasoning depth over strict real-time response, making A5 suitable for high-stakes analytical and decision-support scenarios.
+\section{Conclusions}
+This study presents an Agentic GraphRAG framework for managing complex material procurement data at MICCO through the integration of Enterprise Knowledge Graphs (EKGs) and a multi-agent architecture. The proposed approach addresses key limitations of conventional vector-based RAG by enabling structured reasoning and coordinated access to heterogeneous data sources.
+
+The framework supports improved information retrieval, semantic interpretability, and governance by linking database structures to domain concepts and enabling traceable, evidence-grounded responses that are aligned with safety and regulatory requirements in the mining sector. In addition, the integration of semantic text retrieval with graph-based relational reasoning enables the resolution of multi-hop queries that cannot be effectively handled by standalone retrieval systems.
+
+Overall, the proposed architecture provides a unified semantic framework for integrating fragmented enterprise data and supports more reliable information access and decision support in MICCO’s material procurement operations.
+\section{Acknowledgement}
+This work was supported by the research project “Development of the TKV Knowledge Management System (KMS) and its pilot deployment at the Vinacomin Mining Chemical Industry Holding Corporation (MICCO)”, under project code KC.02.Đ16-25/21-25.
+\bibliographystyle{splncs04}
+\bibliography{bibliography}
+\end{document}

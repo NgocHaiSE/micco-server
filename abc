@@ -1,0 +1,131 @@
+ Phân tích hiện trạng                                                                                                                                                              
+                                                                                                                                                                                      Đã có:                                                                                                                                                                            
+  - FastAPI + PostgreSQL (auth, documents, chat mock)                                                                                                                               
+  - document_chunks table + embedding column (pgvector - chưa dùng)
+  - Upload/download documents
+  - Chat UI (response cứng bằng keyword matching)
+
+  Chưa có (cần xây):
+  - Neo4j Knowledge Graph
+  - Vector database (Milvus hoặc pgvector đang có sẵn)
+  - LLM thật (Llama 3/Mistral local hoặc API)
+  - OCR pipeline
+  - Multi-Agent system (LangGraph)
+
+  ---
+  Lộ trình xây dựng - 3 Phase theo bài báo
+
+  Phase 1: Enterprise Knowledge Graph (EKG) Construction
+
+  Bước 1.1 - Cài Neo4j và định nghĩa ontology
+  Cài Neo4j (Docker) → Tạo 17 node types:
+  VatTu, NhaCungCap, HopDong, Kho, QuyDinh, SuCo,
+  DonHang, KeHoachMuaSam, ChaoGia, PhieuNhapKho,
+  PhieuXuatKho, CongTruong, NguoiKiemTra, ChungChi,
+  DanhMucVatTu, NhaSanXuat, RuiRo
+
+  Bước 1.2 - Data Ingestion Pipeline (2 luồng)
+
+  Luồng Structured:
+  - Đọc dữ liệu từ PostgreSQL (ERP tables) → map sang Neo4j nodes bằng script Python (R2RML concept)
+  - Ví dụ: bảng documents (category=VatTu) → node :VatTu trong Neo4j
+
+  Luồng Unstructured:
+  - OCR: dùng PaddleOCR cho file PDF/scan tiếng Việt → extract text
+  - Chunk text → embed bằng mô hình (e.g. bge-m3 hoặc multilingual-e5)
+  - Lưu vector vào pgvector (đã có sẵn trong schema) thay vì Milvus để đơn giản hơn
+  - Metadata (tên file, ngày, author) → link vào node tương ứng trong Neo4j
+
+  Bước 1.3 - Tạo Cypher schema + SHACL constraints
+  CREATE CONSTRAINT FOR (n:VatTu) REQUIRE n.ma_vat_tu IS UNIQUE;
+  // 38 relations: BAO_GOM, CUNG_CAP, TUAN_THU_THEO, CO_CHUNG_CHI, ...
+
+  ---
+  Phase 2: Multi-Agent System (LangGraph)
+
+  Bước 2.1 - Tích hợp LLM
+  - Option A (local): Ollama + Llama 3.2 / Qwen2.5 (chạy được trên máy thường)
+  - Option B (cloud dev): Claude API hoặc OpenAI API cho giai đoạn phát triển
+
+  Bước 2.2 - Router Agent (Intent Classifier)
+  # Phân loại query thành 3 intent:
+  # - fact_retrieval → Database Agent (SQL/Neo4j trực tiếp)
+  # - compliance_check → Retrieval Agent (Vector search)
+  # - complex_reasoning → Multi-hop Reasoning Agent
+
+  Bước 2.3 - Retrieval Agent (Hybrid Search)
+  # Tool 1: Vector search (pgvector)
+  #   → Tìm text chunks tương tự từ văn bản quy định, hợp đồng
+  # Tool 2: Graph traversal (Neo4j Cypher)
+  #   → VD: MATCH (s:NhaCungCap)-[:CUNG_CAP]->(v:VatTu)-[:LIEN_QUAN_DEN]->(sc:SuCo)
+
+  Bước 2.4 - Reasoning Agent (Analyst)
+  # Tổng hợp kết quả từ Vector + Graph
+  # System prompt: bắt buộc cite nguồn
+  # "Theo HopDong #123..." / "Dựa trên BaoCaoSuCo #456..."
+
+  Bước 2.5 - LangGraph workflow
+  user_query → RouterAgent → [fact|compliance|complex]
+                                 ↓
+                           RetrievalAgent
+                           (vector + cypher)
+                                 ↓
+                           ReasoningAgent
+                                 ↓
+                           response + sources
+
+  ---
+  Phase 3: Tích hợp vào FastAPI + Frontend
+
+  Bước 3.1 - Thay routers/chat.py
+  - Xóa AI_RESPONSES mock
+  - Gọi LangGraph agent pipeline
+  - Stream response về frontend
+
+  Bước 3.2 - Thêm router mới
+  - /api/kg/ → CRUD cho Knowledge Graph (admin)
+  - /api/ingest/ → trigger OCR + embedding pipeline
+
+  Bước 3.3 - Frontend
+  - Hiển thị sources có link đến node trong KG
+  - Visualization KG (dùng React-force-graph hoặc Cytoscape.js)
+
+  ---
+  Stack công nghệ cụ thể
+
+  ┌─────────────────┬────────────────────────────────────────────┐
+  │    Component    │                 Technology                 │
+  ├─────────────────┼────────────────────────────────────────────┤
+  │ Graph DB        │ Neo4j 5.x (Docker)                         │
+  ├─────────────────┼────────────────────────────────────────────┤
+  │ Vector DB       │ pgvector (đã có) hoặc Milvus               │
+  ├─────────────────┼────────────────────────────────────────────┤
+  │ LLM             │ Ollama + Llama 3.2 / Qwen2.5 (local)       │
+  ├─────────────────┼────────────────────────────────────────────┤
+  │ Agent Framework │ LangGraph + LangChain                      │
+  ├─────────────────┼────────────────────────────────────────────┤
+  │ OCR             │ PaddleOCR (hỗ trợ tiếng Việt)              │
+  ├─────────────────┼────────────────────────────────────────────┤
+  │ Embedding       │ bge-m3 hoặc intfloat/multilingual-e5-large │
+  ├─────────────────┼────────────────────────────────────────────┤
+  │ Backend         │ FastAPI (hiện tại)                         │
+  ├─────────────────┼────────────────────────────────────────────┤
+  │ Frontend        │ React (hiện tại)                           │
+  └─────────────────┴────────────────────────────────────────────┘
+
+  ---
+  Thứ tự ưu tiên triển khai
+
+  1. Cài Neo4j + tạo schema ontology
+  2. Viết ingestion pipeline (structured từ PostgreSQL → Neo4j)
+  3. Tích hợp LLM (Ollama local)
+  4. Xây Router Agent đơn giản
+  5. Xây Retrieval Agent (graph tool trước, vector tool sau)
+  6. Xây Reasoning Agent
+  7. Kết nối LangGraph → FastAPI chat endpoint
+  8. OCR pipeline cho PDF
+  9. Frontend enhancements (KG visualization)
+
+  ---
+  Bạn muốn bắt đầu từ bước nào? Tôi đề xuất bắt đầu từ Bước 1.1 (cài Neo4j + ontology schema) vì đây là backbone của toàn bộ hệ thống. Hay bạn muốn bắt đầu từ tích hợp LLM thật vào
+   chat endpoint trước để thấy kết quả nhanh hơn?

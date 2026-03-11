@@ -13,7 +13,7 @@ from models import Document
 logger = logging.getLogger(__name__)
 
 _WRITE_PATTERN = re.compile(
-    r'\b(CREATE|MERGE|DELETE|SET|REMOVE|DROP)\b', re.IGNORECASE
+    r'\b(CREATE|MERGE|DELETE|SET|REMOVE|DROP|CALL|FOREACH)\b', re.IGNORECASE
 )
 _MAX_ROWS = 50
 
@@ -81,16 +81,19 @@ def make_tools(db: Session) -> list:
 
         Returns name, category, owner, date, and ingest status.
         """
-        doc = db.query(Document).filter(Document.id == document_id).first()
-        if doc is None:
-            return "Document not found."
-        return (
-            f"Document ID: {doc.id}\n"
-            f"Name: {doc.name}\n"
-            f"Category: {doc.category}\n"
-            f"Owner: {doc.owner_name}\n"
-            f"Date: {doc.date}\n"
-            f"Ingest status: {doc.ingest_status}"
-        )
+        try:
+            doc = db.query(Document).filter(Document.id == document_id).first()
+            if doc is None:
+                return "Document not found."
+            return (
+                f"Document ID: {doc.id}\n"
+                f"Name: {doc.name}\n"
+                f"Category: {doc.category}\n"
+                f"Owner: {doc.owner_name}\n"
+                f"Date: {doc.date}\n"
+                f"Ingest status: {doc.ingest_status}"
+            )
+        except Exception as exc:
+            raise ToolException(f"Document lookup failed: {exc}") from exc
 
     return [query_knowledge_graph, search_document_chunks, get_document_details]

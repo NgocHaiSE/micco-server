@@ -54,6 +54,30 @@ def test_query_knowledge_graph_blocks_merge():
             tool.invoke({"cypher": "MERGE (n:VatTu {id: 1}) RETURN n"})
 
 
+def test_query_knowledge_graph_blocks_delete():
+    with patch("services.agent.tools.neo4j_service") as mock_neo4j:
+        mock_neo4j.available = True
+        tool = _get_tool(_get_tools(), "query_knowledge_graph")
+        with pytest.raises(ToolException, match="Write operations"):
+            tool.invoke({"cypher": "MATCH (n) DELETE n"})
+
+
+def test_query_knowledge_graph_blocks_set():
+    with patch("services.agent.tools.neo4j_service") as mock_neo4j:
+        mock_neo4j.available = True
+        tool = _get_tool(_get_tools(), "query_knowledge_graph")
+        with pytest.raises(ToolException, match="Write operations"):
+            tool.invoke({"cypher": "MATCH (n) SET n.name = 'x' RETURN n"})
+
+
+def test_query_knowledge_graph_blocks_call():
+    with patch("services.agent.tools.neo4j_service") as mock_neo4j:
+        mock_neo4j.available = True
+        tool = _get_tool(_get_tools(), "query_knowledge_graph")
+        with pytest.raises(ToolException, match="Write operations"):
+            tool.invoke({"cypher": "CALL apoc.do.cypher('CREATE (n) RETURN n', {}) YIELD value RETURN value"})
+
+
 def test_query_knowledge_graph_raises_when_neo4j_unavailable():
     with patch("services.agent.tools.neo4j_service") as mock_neo4j:
         mock_neo4j.available = False
@@ -116,6 +140,14 @@ def test_search_document_chunks_returns_empty_string_on_db_error():
         tool = _get_tool(_get_tools(db), "search_document_chunks")
         result = tool.invoke({"query": "test"})
 
+    assert result == ""
+
+
+def test_search_document_chunks_returns_empty_string_when_embed_returns_empty():
+    db = MagicMock()
+    with patch("services.agent.tools.embed", return_value=[]):
+        tool = _get_tool(_get_tools(db), "search_document_chunks")
+        result = tool.invoke({"query": "anything"})
     assert result == ""
 
 

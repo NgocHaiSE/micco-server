@@ -82,6 +82,8 @@ def make_tools(db: Session) -> list:
         Returns name, category, owner, date, and ingest status.
         """
         try:
+            # Note: doc.owner_name lazy-loads the User relationship (N+1 if called in a loop).
+            # Phase 3 should consider adding joinedload(Document.owner) if this becomes a hotspot.
             doc = db.query(Document).filter(Document.id == document_id).first()
             if doc is None:
                 return "Document not found."

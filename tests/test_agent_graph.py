@@ -141,3 +141,20 @@ def test_run_agent_never_raises():
             assert isinstance(result, str)
         except Exception:
             pytest.fail("run_agent raised an exception — it must never raise")
+
+
+def test_run_agent_returns_fallback_when_no_ai_message_in_result():
+    from services.agent import run_agent
+    from services.agent.graph import _FALLBACK_RECURSION
+
+    mock_app = MagicMock()
+    # Simulate: invoke succeeded but messages contain only a HumanMessage (no AIMessage)
+    mock_app.invoke.return_value = {
+        "messages": [HumanMessage(content="original query")],
+        "intent": "structural",
+        "document_ids": [],
+    }
+    with patch("services.agent.graph.build_graph", return_value=mock_app):
+        result = run_agent("query", MagicMock())
+
+    assert result == _FALLBACK_RECURSION

@@ -78,6 +78,30 @@ def test_query_knowledge_graph_blocks_call():
             tool.invoke({"cypher": "CALL apoc.do.cypher('CREATE (n) RETURN n', {}) YIELD value RETURN value"})
 
 
+def test_query_knowledge_graph_blocks_remove():
+    with patch("services.agent.tools.neo4j_service") as mock_neo4j:
+        mock_neo4j.available = True
+        tool = _get_tool(_get_tools(), "query_knowledge_graph")
+        with pytest.raises(ToolException, match="Write operations"):
+            tool.invoke({"cypher": "MATCH (n) REMOVE n.name RETURN n"})
+
+
+def test_query_knowledge_graph_blocks_drop():
+    with patch("services.agent.tools.neo4j_service") as mock_neo4j:
+        mock_neo4j.available = True
+        tool = _get_tool(_get_tools(), "query_knowledge_graph")
+        with pytest.raises(ToolException, match="Write operations"):
+            tool.invoke({"cypher": "DROP CONSTRAINT constraint_name"})
+
+
+def test_query_knowledge_graph_blocks_foreach():
+    with patch("services.agent.tools.neo4j_service") as mock_neo4j:
+        mock_neo4j.available = True
+        tool = _get_tool(_get_tools(), "query_knowledge_graph")
+        with pytest.raises(ToolException, match="Write operations"):
+            tool.invoke({"cypher": "MATCH (n) FOREACH (x IN [1] | SET n.y = x)"})
+
+
 def test_query_knowledge_graph_raises_when_neo4j_unavailable():
     with patch("services.agent.tools.neo4j_service") as mock_neo4j:
         mock_neo4j.available = False

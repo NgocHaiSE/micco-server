@@ -48,6 +48,8 @@ class Document(Base):
     tags = Column(JSONB, nullable=False, default=[])
     status = Column(String(20), nullable=False, default="Active")
     file_path = Column(String(500), nullable=True)
+    ingest_status = Column(String(20), nullable=True, default="pending")
+    ingest_error  = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     owner = relationship("User", back_populates="documents")

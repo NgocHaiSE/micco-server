@@ -86,7 +86,7 @@ CREATE TABLE document_chunks (
     document_id     INTEGER       NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     chunk_index     INTEGER       NOT NULL,
     content         TEXT          NOT NULL,
-    embedding       vector(1536),   -- OpenAI ada-002 dimension; adjust as needed
+    embedding       vector(1024),   -- bge-m3 dimension
     token_count     INTEGER       DEFAULT 0,
     metadata        JSONB         DEFAULT '{}'::jsonb,
     created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
@@ -276,7 +276,7 @@ COMMENT ON FUNCTION delete_document IS 'Delete a document and return its file pa
 
 -- ─── Semantic Search via Embeddings ─────────────────────────
 CREATE OR REPLACE FUNCTION search_chunks_by_embedding(
-    p_query_embedding vector(1536),
+    p_query_embedding vector(1024),
     p_department_id   INTEGER DEFAULT NULL,
     p_limit           INTEGER DEFAULT 10
 )

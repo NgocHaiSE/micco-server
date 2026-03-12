@@ -19,7 +19,7 @@ _UPLOADS_ROOT = Path(os.getenv("UPLOAD_DIR", os.path.join(os.path.dirname(os.pat
 
 def _safe_file_path(file_path: str) -> Path:
     """Resolve path and verify it stays within the uploads root (prevents path traversal)."""
-    resolved = Path(file_path).resolve()
+    resolved = (_UPLOADS_ROOT / file_path).resolve()
     if not str(resolved).startswith(str(_UPLOADS_ROOT)):
         raise ValueError(f"Path traversal detected: {file_path!r}")
     return resolved

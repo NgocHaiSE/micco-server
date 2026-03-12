@@ -44,8 +44,15 @@ if "database" not in sys.modules:
 # ── models ────────────────────────────────────────────────────────────────────
 if "models" not in sys.modules:
     class _ChatMessage:
-        """Minimal ChatMessage stub: stores constructor kwargs as attributes."""
-        def __init__(self, **kwargs):
+        """Minimal ChatMessage stub: stores constructor kwargs as attributes.
+
+        Class-level MagicMock attributes (e.g. user_id) allow SQLAlchemy-style
+        class attribute access in router filter chains (ChatMessage.user_id == x).
+        """
+        user_id = MagicMock()    # supports ChatMessage.user_id == value in db.query().filter()
+        created_at = MagicMock()  # supports .order_by(ChatMessage.created_at.asc())
+
+        def __init__(self, *args, **kwargs):
             for k, v in kwargs.items():
                 setattr(self, k, v)
 

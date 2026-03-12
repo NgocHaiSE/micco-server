@@ -1,5 +1,4 @@
 # backend/tests/test_chat_router.py
-import pytest
 from unittest.mock import MagicMock, patch
 
 
@@ -32,7 +31,6 @@ def test_send_message_returns_agent_answer():
 
     with patch("routers.chat.run_agent", return_value=AgentResult(answer="test answer", graph_data=None)):
         response = send_message(req=req, db=db, current_user=user)
-
     assert response.content == "test answer"
     assert response.graph_data is None
 
@@ -73,3 +71,21 @@ def test_send_message_calls_run_agent_with_message_and_db():
         send_message(req=req, db=db, current_user=user)
 
     mock_run.assert_called_once_with("specific query", db)
+
+
+def test_get_history_returns_graph_data_none_for_all_messages():
+    """History messages always have graph_data=None (no retroactive graph data)."""
+    from routers.chat import get_history
+    from models import ChatMessage
+
+    msg1 = ChatMessage(id=1, role="user", content="hello", sources=[])
+    msg2 = ChatMessage(id=2, role="ai", content="world", sources=[])
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [msg1, msg2]
+    user = MagicMock()
+    user.id = 1
+
+    responses = get_history(db=mock_db, current_user=user)
+    assert len(responses) == 2
+    assert all(r.graph_data is None for r in responses)

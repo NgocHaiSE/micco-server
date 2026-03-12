@@ -1,3 +1,5 @@
+import os
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -8,6 +10,8 @@ from routers import auth, documents, dashboard, chat, admin
 from routers import ingest
 from services.neo4j_service import neo4j_service
 
+logger = logging.getLogger(__name__)
+
 # ─── Create tables ───────────────────────────────────────────
 Base.metadata.create_all(bind=engine)
 
@@ -16,6 +20,10 @@ Base.metadata.create_all(bind=engine)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     neo4j_service.connect()
+    if not os.environ.get("OPENAI_API_KEY"):
+        logger.warning(
+            "OPENAI_API_KEY is not set — agent responses will be unavailable"
+        )
     yield
     neo4j_service.close()
 

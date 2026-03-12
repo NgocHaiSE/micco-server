@@ -109,6 +109,7 @@ class ChatMessageResponse(BaseModel):
     role: str
     content: str
     sources: list[str]
+    graph_data: dict | None = None
 
     class Config:
         from_attributes = True

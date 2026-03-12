@@ -43,11 +43,18 @@ if "database" not in sys.modules:
 
 # ── models ────────────────────────────────────────────────────────────────────
 if "models" not in sys.modules:
+    class _ChatMessage:
+        """Minimal ChatMessage stub: stores constructor kwargs as attributes."""
+        def __init__(self, **kwargs):
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+
     _stub(
         "models",
         Document=MagicMock(),
         DocumentChunk=MagicMock(),
         User=MagicMock(),
+        ChatMessage=_ChatMessage,
     )
 
 # ── auth ──────────────────────────────────────────────────────────────────────

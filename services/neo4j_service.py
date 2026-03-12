@@ -1,15 +1,17 @@
 import logging
 import os
 from neo4j import GraphDatabase
-from kg.ontology import RelType
+from kg.ontology import NodeLabel, RelType
 
 logger = logging.getLogger(__name__)
 
 # Allowlist of valid Neo4j labels (prevents Cypher label injection)
 _ALLOWED_LABELS = {
-    "VatTu", "HopDong", "QuyDinh", "SuCo", "KeHoachMuaSam",
-    "PhieuNhapKho", "ChungChi",
+    label.value for label in NodeLabel
+    if label not in (NodeLabel.DOCUMENT, NodeLabel.DOCUMENT_CHUNK)
 }
+
+_DOMAIN_RELS = {rel.value for rel in RelType if rel != RelType.HAS_CHUNK}
 
 CATEGORY_LABEL_MAP: dict[str, str] = {
     "VatTu":       "VatTu",
@@ -86,6 +88,69 @@ class Neo4jService:
         """
         with self._driver.session() as session:
             session.run(cypher, document_id=document_id, chunk_index=chunk_idx)
+
+    def create_entity_graph(
+        self,
+        document_id: int,
+        entities: list[dict],
+        relationships: list[dict],
+    ) -> None:
+        """MERGE domain entities + relationships into Neo4j.
+
+        Links each entity back to its source Document node via MENTIONS.
+        Silently skips entries with invalid labels or relation types.
+        No-op if Neo4j is unavailable.
+        """
+        if not self.available:
+            return
+        with self._driver.session() as session:
+            # 1. MERGE entity nodes
+            for entity in entities:
+                label = entity.get("label", "")
+                name = entity.get("name", "")
+                if label not in _ALLOWED_LABELS or not name:
+                    continue
+                session.run(
+                    f"MERGE (e:{label} {{name: $name}}) SET e.last_seen = datetime()",
+                    name=name,
+                )
+
+            # 2. MERGE relationships
+            for rel in relationships:
+                s_label = rel.get("source_label", "")
+                t_label = rel.get("target_label", "")
+                rel_type = rel.get("relation", "")
+                source = rel.get("source", "")
+                target = rel.get("target", "")
+                if (
+                    s_label not in _ALLOWED_LABELS
+                    or t_label not in _ALLOWED_LABELS
+                    or rel_type not in _DOMAIN_RELS
+                    or not source
+                    or not target
+                ):
+                    continue
+                session.run(
+                    f"MATCH (s:{s_label} {{name: $source}}) "
+                    f"MATCH (t:{t_label} {{name: $target}}) "
+                    f"MERGE (s)-[:{rel_type}]->(t)",
+                    source=source,
+                    target=target,
+                )
+
+            # 3. Link entities to document via MENTIONS (infrastructure edge)
+            for entity in entities:
+                label = entity.get("label", "")
+                name = entity.get("name", "")
+                if label not in _ALLOWED_LABELS or not name:
+                    continue
+                session.run(
+                    f"MATCH (doc:Document {{document_id: $doc_id}}) "
+                    f"MATCH (e:{label} {{name: $name}}) "
+                    "MERGE (doc)-[:MENTIONS]->(e)",
+                    doc_id=document_id,
+                    name=name,
+                )
 
     def run_cypher(self, query: str, params: dict | None = None) -> list[dict]:
         if not self.available:

@@ -82,3 +82,76 @@ def test_create_chunk_node_runs_cypher(mock_driver):
         assert "HAS_CHUNK" in cypher_call[0][0]
         assert cypher_call[1]["document_id"] == 42
         assert cypher_call[1]["chunk_index"] == 0
+
+
+def test_create_entity_graph_merges_entity_nodes(mock_driver):
+    driver, session = mock_driver
+    from services.neo4j_service import Neo4jService
+    svc = Neo4jService.__new__(Neo4jService)
+    svc.available = True
+    svc._driver = driver
+
+    entities = [{"name": "Công ty ABC", "label": "NhaCungCap"}]
+    svc.create_entity_graph(document_id=1, entities=entities, relationships=[])
+
+    assert session.run.called
+    cypher_call = session.run.call_args_list[0]
+    assert "MERGE" in cypher_call[0][0]
+    assert "NhaCungCap" in cypher_call[0][0]
+
+
+def test_create_entity_graph_noop_when_unavailable(mock_driver):
+    driver, session = mock_driver
+    from services.neo4j_service import Neo4jService
+    svc = Neo4jService.__new__(Neo4jService)
+    svc.available = False
+    svc._driver = driver
+
+    svc.create_entity_graph(
+        document_id=1,
+        entities=[{"name": "X", "label": "HopDong"}],
+        relationships=[],
+    )
+    session.run.assert_not_called()
+
+
+def test_create_entity_graph_skips_invalid_label(mock_driver):
+    driver, session = mock_driver
+    from services.neo4j_service import Neo4jService
+    svc = Neo4jService.__new__(Neo4jService)
+    svc.available = True
+    svc._driver = driver
+
+    entities = [{"name": "Bad", "label": "NotAValidLabel"}]
+    svc.create_entity_graph(document_id=1, entities=entities, relationships=[])
+    # Should not call session.run for the entity MERGE
+    for call in session.run.call_args_list:
+        assert "NotAValidLabel" not in call[0][0]
+
+
+def test_create_entity_graph_merges_mentions_edge(mock_driver):
+    driver, session = mock_driver
+    from services.neo4j_service import Neo4jService
+    svc = Neo4jService.__new__(Neo4jService)
+    svc.available = True
+    svc._driver = driver
+
+    entities = [{"name": "HĐ-001", "label": "HopDong"}]
+    svc.create_entity_graph(document_id=7, entities=entities, relationships=[])
+
+    all_cyphers = [call[0][0] for call in session.run.call_args_list]
+    assert any("MENTIONS" in c for c in all_cyphers), \
+        "Expected a MENTIONS edge Cypher call"
+
+
+def test_allowed_labels_covers_all_domain_labels():
+    """_ALLOWED_LABELS must include all 17 domain NodeLabel values."""
+    from services.neo4j_service import _ALLOWED_LABELS
+    from kg.ontology import NodeLabel
+    domain_labels = {
+        label.value for label in NodeLabel
+        if label not in (NodeLabel.DOCUMENT, NodeLabel.DOCUMENT_CHUNK)
+    }
+    assert domain_labels == _ALLOWED_LABELS, (
+        f"Missing labels: {domain_labels - _ALLOWED_LABELS}"
+    )

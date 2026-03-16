@@ -46,6 +46,7 @@ class Document(Base):
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     department_id = Column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
     tags = Column(JSONB, nullable=False, default=[])
+    thumbnail = Column(String(500), nullable=True)  # Cover image / avatar for document
     status = Column(String(20), nullable=False, default="Active")
     file_path = Column(String(500), nullable=True)
     ingest_status = Column(String(20), nullable=True, default="pending")

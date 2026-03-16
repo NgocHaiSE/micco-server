@@ -58,6 +58,7 @@ class DocumentResponse(BaseModel):
     department: Optional[str] = None
     date: str
     tags: list[str]
+    thumbnail: Optional[str] = None
     status: str
 
     class Config:

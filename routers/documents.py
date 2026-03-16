@@ -59,6 +59,7 @@ def build_document_response(doc: Document) -> DocumentResponse:
         department=doc.department_name,
         date=doc.date,
         tags=doc.tags,
+        thumbnail=doc.thumbnail,
         status=doc.status,
     )
 
@@ -108,6 +109,7 @@ async def upload_documents(
     tags: Optional[str] = Form(None),
     category: Optional[str] = Form(None),
     department_id: Optional[int] = Form(None),
+    thumbnail: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -120,6 +122,17 @@ async def upload_documents(
 
     # Default category
     effective_category = category if category else "Tài liệu"
+
+    # Handle thumbnail upload
+    thumbnail_path = None
+    if thumbnail:
+        thumb_content = await thumbnail.read()
+        thumb_ext = thumbnail.filename.rsplit(".", 1)[-1] if "." in thumbnail.filename else "jpg"
+        thumb_name = f"thumb_{uuid.uuid4().hex}.{thumb_ext}"
+        thumb_path = os.path.join(UPLOAD_DIR, thumb_name)
+        with open(thumb_path, "wb") as f:
+            f.write(thumb_content)
+        thumbnail_path = thumb_name
 
     for file in files:
         # Read file content
@@ -150,6 +163,7 @@ async def upload_documents(
             owner_id=current_user.id,
             department_id=effective_department_id,
             file_path=stored_name,
+            thumbnail=thumbnail_path,
             status="Active",
         )
         doc.tags = tag_list
@@ -200,6 +214,56 @@ def download_document(
         filename=doc.name,
         media_type="application/octet-stream",
     )
+
+
+# ─── Get Thumbnail ──────────────────────────────────────────────
+
+@router.get("/{doc_id}/thumbnail")
+def get_thumbnail(
+    doc_id: int,
+    db: Session = Depends(get_db),
+):
+    """Serve document thumbnail image (public access)."""
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc or not doc.thumbnail:
+        raise HTTPException(status_code=404, detail="Thumbnail not found")
+
+    file_path = os.path.join(UPLOAD_DIR, doc.thumbnail)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Thumbnail file not found")
+
+    # Determine media type from extension
+    ext = doc.thumbnail.rsplit(".", 1)[-1].lower()
+    media_types = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "gif": "image/gif", "webp": "image/webp"}
+    media_type = media_types.get(ext, "image/jpeg")
+
+    return FileResponse(
+        path=file_path,
+        media_type=media_type,
+    )
+
+
+# ─── Get Single Document ────────────────────────────────────────
+
+@router.get("/{doc_id}", response_model=DocumentResponse)
+def get_document(
+    doc_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get a single document by ID."""
+    doc = db.query(Document).options(
+        joinedload(Document.owner),
+        joinedload(Document.department),
+    ).filter(Document.id == doc_id).first()
+
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Department access check
+    check_department_access(current_user, doc)
+
+    return build_document_response(doc)
 
 
 # ─── Delete Document ────────────────────────────────────────

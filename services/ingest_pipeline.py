@@ -89,6 +89,19 @@ def run(document_id: int) -> None:
                     logger.info("Text file read directly: %s", file_path)
             except Exception as exc:
                 logger.warning("Failed to read text file %s: %s", file_path, exc)
+        elif ext == ".docx":
+            # Word documents: extract text via python-docx
+            file_path = str(_safe_file_path(raw_path))
+            try:
+                import docx
+                doc_obj = docx.Document(file_path)
+                paragraphs = [p.text for p in doc_obj.paragraphs if p.text.strip()]
+                text_content = "\n".join(paragraphs)
+                if text_content.strip():
+                    chunks_to_process = chunk_text([text_content])
+                    logger.info("DOCX extracted: %s (%d paragraphs)", file_path, len(paragraphs))
+            except Exception as exc:
+                logger.warning("Failed to read docx file %s: %s", file_path, exc)
 
         # Process chunks if we have them
         if chunks_to_process:

@@ -20,6 +20,8 @@ class NodeLabel(str, Enum):
     DANH_MUC        = "DanhMucVatTu"
     NHA_SAN_XUAT    = "NhaSanXuat"
     RUI_RO          = "RuiRo"
+    # Knowledge base (1)
+    TRI_THUC        = "TriThuc"
     # Structural nodes for HAS_CHUNK path (2)
     DOCUMENT        = "Document"
     DOCUMENT_CHUNK  = "DocumentChunk"

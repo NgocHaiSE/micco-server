@@ -10,8 +10,6 @@ from models import User, Document
 from schemas import DocumentResponse
 from auth import get_current_user
 from config import UPLOAD_DIR, MAX_FILE_SIZE
-from fastapi import BackgroundTasks
-from services import ingest_pipeline
 
 router = APIRouter(prefix="/api/documents", tags=["Documents"])
 
@@ -37,9 +35,11 @@ def get_file_type(filename: str) -> str:
 
 
 def check_department_access(user: User, doc: Document):
-    """Raise 403 if a non-admin user tries to access a doc outside their department."""
+    """Raise 403 if a non-admin user tries to access a non-public doc outside their department."""
     if user.role == "Admin":
         return  # Admins can access everything
+    if getattr(doc, "visibility", "internal") == "public":
+        return  # Public docs are accessible to all
     if doc.department_id is not None and user.department_id != doc.department_id:
         raise HTTPException(
             status_code=403,
@@ -60,6 +60,9 @@ def build_document_response(doc: Document) -> DocumentResponse:
         date=doc.date,
         tags=doc.tags,
         thumbnail=doc.thumbnail,
+        visibility=doc.visibility or "internal",
+        approval_status=doc.approval_status or "pending_approval",
+        approval_note=doc.approval_note,
         status=doc.status,
     )
 
@@ -71,6 +74,7 @@ def list_documents(
     search: Optional[str] = Query(None),
     type_filter: Optional[str] = Query(None, alias="type"),
     category: Optional[str] = Query(None),
+    department_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -80,9 +84,19 @@ def list_documents(
         joinedload(Document.department),
     )
 
-    # Department scoping: non-admin users only see their department's docs
-    if current_user.role != "Admin" and current_user.department_id is not None:
-        query = query.filter(Document.department_id == current_user.department_id)
+    # Visibility + department scoping:
+    # - Admin sees everything (optionally filtered by department_id param)
+    # - Non-admin sees: public docs + internal docs from own department
+    if current_user.role != "Admin":
+        from sqlalchemy import or_
+        query = query.filter(
+            or_(
+                Document.visibility == "public",
+                Document.department_id == current_user.department_id,
+            )
+        )
+    if department_id is not None:
+        query = query.filter(Document.department_id == department_id)
 
     if search:
         search_lower = f"%{search.lower()}%"
@@ -104,10 +118,10 @@ def list_documents(
 
 @router.post("/upload", response_model=list[DocumentResponse])
 async def upload_documents(
-    background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
     tags: Optional[str] = Form(None),
     category: Optional[str] = Form(None),
+    visibility: Optional[str] = Form("internal"),
     department_id: Optional[int] = Form(None),
     thumbnail: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
@@ -154,6 +168,9 @@ async def upload_documents(
             f.write(content)
 
         # Create DB record
+        # Validate visibility value
+        effective_visibility = visibility if visibility in ("internal", "public") else "internal"
+
         doc = Document(
             name=file.filename,
             type=get_file_type(file.filename),
@@ -164,6 +181,7 @@ async def upload_documents(
             department_id=effective_department_id,
             file_path=stored_name,
             thumbnail=thumbnail_path,
+            visibility=effective_visibility,
             status="Active",
         )
         doc.tags = tag_list
@@ -174,8 +192,7 @@ async def upload_documents(
         # Eagerly load relationships for response
         db.refresh(doc, attribute_names=["owner", "department"])
 
-        # Enqueue ingest pipeline as background task
-        background_tasks.add_task(ingest_pipeline.run, doc.id)
+        # Ingest is deferred until a Trưởng phòng/Admin approves the document
 
         uploaded.append(build_document_response(doc))
 

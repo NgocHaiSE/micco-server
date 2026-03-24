@@ -44,9 +44,9 @@ def _should_continue(state: AgentState) -> str:
     return END
 
 
-def build_graph(db: Session):
+def build_graph(db: Session, department_id: int | None = None):
     """Compile the LangGraph ReAct graph. Called once per run_agent() invocation."""
-    tools = make_tools(db)
+    tools = make_tools(db, department_id=department_id)
     llm = ChatOpenAI(model="gpt-4o", temperature=0).bind_tools(tools)
 
     def agent_node(state: AgentState) -> AgentState:

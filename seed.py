@@ -21,9 +21,9 @@ try:
         # ─── Create Users ────────────────────────────────────
         users_data = [
             {"name": "Alex Johnson", "email": "alex@docvault.io", "password": "admin123", "role": "Admin"},
-            {"name": "Sarah Chen", "email": "sarah@docvault.io", "password": "member123", "role": "Member"},
-            {"name": "Mike Rivera", "email": "mike@docvault.io", "password": "member123", "role": "Member"},
-            {"name": "Lisa Park", "email": "lisa@docvault.io", "password": "member123", "role": "Member"},
+            {"name": "Sarah Chen", "email": "sarah@docvault.io", "password": "member123", "role": "Trưởng phòng"},
+            {"name": "Mike Rivera", "email": "mike@docvault.io", "password": "member123", "role": "Nhân viên"},
+            {"name": "Lisa Park", "email": "lisa@docvault.io", "password": "member123", "role": "Nhân viên"},
         ]
 
         users = {}

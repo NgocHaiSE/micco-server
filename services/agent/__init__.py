@@ -67,9 +67,10 @@ def _extract_graph_data(state: dict) -> dict | None:
     return None  # for loop exhausted without finding a matching query_knowledge_graph ToolMessage
 
 
-def run_agent(query: str, db: Session) -> AgentResult:
+def run_agent(query: str, db: Session, department_id: int | None = None) -> AgentResult:
     """Run the LangGraph ReAct agent and return an AgentResult.
 
+    department_id scopes all data retrieval. None = Admin (no filter).
     Never raises — all exceptions are caught and returned as AgentResult with a fallback answer.
     """
     from langchain_core.messages import HumanMessage
@@ -77,11 +78,12 @@ def run_agent(query: str, db: Session) -> AgentResult:
     try:
         import services.agent.graph as _graph  # deferred import — allows patching in tests
 
-        app = _graph.build_graph(db)
+        app = _graph.build_graph(db, department_id=department_id)
         initial_state = {
             "messages": [HumanMessage(content=query)],
             "intent": "",
             "document_ids": [],
+            "department_id": department_id,
         }
         result = app.invoke(initial_state, config={"recursion_limit": 6})
 

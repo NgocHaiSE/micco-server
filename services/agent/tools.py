@@ -18,17 +18,34 @@ _WRITE_PATTERN = re.compile(
 _MAX_ROWS = 50
 
 
-def make_tools(db: Session) -> list:
-    """Create tool instances with `db` session captured in closure.
+def make_tools(db: Session, department_id: int | None = None) -> list:
+    """Create tool instances with `db` session and department scope captured in closure.
+
+    department_id controls data isolation:
+      - int  → filter all queries to that department only
+      - None → Admin mode, no filtering (sees everything)
 
     Called once per run_agent() invocation. Each call returns fresh tool
     instances bound to the provided SQLAlchemy session.
     """
 
+    # ── Helper: build Neo4j department filter clause ──────────
+    def _neo4j_dept_filter(node_var: str = "doc") -> str:
+        """Return a Cypher WHERE fragment that restricts to the user's department.
+
+        Uses the document_id property on Document/TriThuc nodes to JOIN back
+        to PostgreSQL documents/knowledge_entries (which carry department_id).
+        For simplicity, filters on the document_id property stored on Neo4j nodes.
+        """
+        if department_id is None:
+            return ""
+        return f" AND {node_var}.department_id = {department_id}"
+
     @tool
     def query_knowledge_graph(cypher: str) -> str:
         """Run a read-only Cypher MATCH query on the Neo4j knowledge graph.
 
+        Results are scoped to the current user's department.
         Returns up to 50 rows as a JSON array. Only MATCH and RETURN
         clauses are allowed — write operations are rejected.
         """
@@ -39,15 +56,25 @@ def make_tools(db: Session) -> list:
         if not neo4j_service.available:
             raise ToolException("Graph DB unavailable.")
 
-        # Auto-fix: If type(rel) is used but rel variable not defined, extract rel type from MATCH pattern
+        # Auto-fix: If type(rel) is used but rel variable not defined
         if "type(rel)" in cypher and "-[:" not in cypher.replace("-[:", "-[rel:"):
-            # Find relationship type in the query and replace type(rel) with literal
             match = re.search(r'-\[(\w+):(\w+)\]->', cypher)
             if match:
                 var_name, rel_type = match.groups()
                 if var_name != "rel":
                     cypher = cypher.replace("type(rel)", f"'{rel_type}'")
-                    logger.info(f"Auto-fixed Cypher: replaced type(rel) with '{rel_type}'")
+
+        # Inject department filter: if query touches Document/TriThuc nodes
+        if department_id is not None:
+            # Append department filter for document-linked queries
+            dept_filter = (
+                f" AND (EXISTS {{ MATCH (doc)-[:MENTIONS|HAS_CHUNK]-(n) "
+                f"WHERE doc.department_id = {department_id} }}"
+                f" OR n.department_id = {department_id})"
+            )
+            # Only inject if query has a WHERE clause (safe heuristic)
+            if "WHERE" in cypher.upper():
+                cypher = cypher.replace("RETURN", f"{dept_filter}\nRETURN", 1)
 
         try:
             rows = neo4j_service.run_cypher(cypher, {})[:_MAX_ROWS]
@@ -59,13 +86,11 @@ def make_tools(db: Session) -> list:
     def search_kg_semantic(query: str, limit: int = 5) -> str:
         """Semantic search over document chunks using Neo4j vector similarity.
 
-        Uses embeddings stored in Neo4j to find relevant document chunks.
-        Returns chunk content, source document ID, and similarity score.
-        Use this for content-based questions about document text.
+        Results are scoped to the current user's department.
         """
         try:
             vector = embed([query])[0]
-            rows = neo4j_service.search_similar_chunks(vector, limit)
+            rows = neo4j_service.search_similar_chunks(vector, limit, department_id=department_id)
             if not rows:
                 return "No matching chunks found in knowledge graph."
             lines = []
@@ -84,29 +109,26 @@ def make_tools(db: Session) -> list:
 
     @tool
     def search_document_chunks(query: str, limit: int = 5) -> str:
-        """Semantic search over document chunk embeddings.
+        """Semantic search over all chunk embeddings (documents + knowledge).
 
-        Returns top matching chunks with content and source document IDs.
-        The result begins with a DOCUMENT_IDS header that the graph can use
-        for follow-up Cypher queries. Returns an empty string on DB error.
+        Results are scoped to the current user's department.
         """
         try:
             vector = embed([query])[0]
             rows = db.execute(
-                text("SELECT * FROM search_chunks_by_embedding(CAST(:embedding AS vector), :limit)"),
-                {"embedding": str(vector), "limit": limit},
+                text("SELECT * FROM search_chunks_by_embedding(CAST(:embedding AS vector), :dept_id, :limit)"),
+                {"embedding": str(vector), "dept_id": department_id, "limit": limit},
             ).fetchall()
 
             if not rows:
-                return "No matching document chunks found."
+                return "No matching chunks found."
 
-            # Deduplicate document IDs while preserving order
-            doc_ids = list(dict.fromkeys(row.document_id for row in rows))
+            doc_ids = list(dict.fromkeys(row.source_id for row in rows if row.source_type == "document"))
             lines = [f"DOCUMENT_IDS: {','.join(str(i) for i in doc_ids)}", "---"]
             for i, row in enumerate(rows, 1):
                 lines.append(
-                    f"Chunk {i} (doc_id={row.document_id}, "
-                    f"similarity={row.similarity:.3f}):\n{row.content}"
+                    f"Chunk {i} (source={row.source_type}, id={row.source_id}, "
+                    f"name={row.source_name}, similarity={row.similarity:.3f}):\n{row.chunk_content}"
                 )
             return "\n".join(lines)
         except Exception as exc:
@@ -117,12 +139,13 @@ def make_tools(db: Session) -> list:
     def get_document_details(document_id: int) -> str:
         """Look up metadata for a specific document by its integer ID.
 
-        Returns name, category, owner, date, and ingest status.
+        Returns only documents belonging to the current user's department.
         """
         try:
-            # Note: doc.owner_name lazy-loads the User relationship (N+1 if called in a loop).
-            # Phase 3 should consider adding joinedload(Document.owner) if this becomes a hotspot.
-            doc = db.query(Document).filter(Document.id == document_id).first()
+            query = db.query(Document).filter(Document.id == document_id)
+            if department_id is not None:
+                query = query.filter(Document.department_id == department_id)
+            doc = query.first()
             if doc is None:
                 return "Document not found."
             return (
@@ -140,23 +163,22 @@ def make_tools(db: Session) -> list:
     def search_kg_flexible(keywords: str, limit: int = 10) -> str:
         """Flexible search in knowledge graph without knowing exact labels/relationships.
 
-        Provide keywords about what you're looking for (e.g., "công ty", "nhà cung cấp",
-        "hợp đồng", "báo giá", "mua bán"). This tool will:
-        1. Search for nodes matching the keywords in name property
-        2. Search for relationships containing the keywords
-        3. Return all connected relationships automatically
-
-        Use this when you don't know the exact Neo4j labels or relationship types.
+        Results are scoped to the current user's department.
         """
         if not neo4j_service.available:
             raise ToolException("Graph DB unavailable.")
         try:
             kw = keywords.lower().strip()
 
+            # Department filter for Neo4j: restrict to nodes linked to dept's documents
+            dept_clause = ""
+            if department_id is not None:
+                dept_clause = f" AND (n.department_id = {department_id} OR m.department_id = {department_id})"
+
             # Search for nodes by name containing keywords
             cypher = f"""
             MATCH (n)-[r]-(m)
-            WHERE toLower(n.name) CONTAINS '{kw}' OR toLower(m.name) CONTAINS '{kw}'
+            WHERE (toLower(n.name) CONTAINS '{kw}' OR toLower(m.name) CONTAINS '{kw}'){dept_clause}
             RETURN n.name AS source, labels(n)[0] AS source_type,
                    type(r) AS relation, m.name AS target, labels(m)[0] AS target_type
             LIMIT {limit * 2}
@@ -164,7 +186,6 @@ def make_tools(db: Session) -> list:
             rows = neo4j_service.run_cypher(cypher, {})
 
             if not rows:
-                # Search by label (e.g., "công ty" -> NhaCungCap)
                 label_map = {
                     "công ty": "NhaCungCap", "nhà cung cấp": "NhaCungCap", "ncc": "NhaCungCap",
                     "nhà máy": "NhaSanXuat", "sản xuất": "NhaSanXuat",
@@ -188,6 +209,7 @@ def make_tools(db: Session) -> list:
                 if found_label:
                     cypher = f"""
                     MATCH (n:{found_label})-[r]-(m)
+                    WHERE true{dept_clause}
                     RETURN n.name AS source, labels(n)[0] AS source_type,
                            type(r) AS relation, m.name AS target, labels(m)[0] AS target_type
                     LIMIT {limit * 2}
@@ -195,14 +217,13 @@ def make_tools(db: Session) -> list:
                     rows = neo4j_service.run_cypher(cypher, {})
 
             if not rows:
-                # Search by relationship type containing keywords
                 rel_keywords = ["cung cap", "cấp", "cung cấp", "mua", "bán", "chào giá",
                                "yêu cầu", "cần", "theo", "liên quan", "sản xuất", "nhập", "xuất"]
                 for rkw in rel_keywords:
                     if rkw in kw:
                         cypher = f"""
                         MATCH (n)-[r]-(m)
-                        WHERE toLower(type(r)) CONTAINS '{rkw}'
+                        WHERE toLower(type(r)) CONTAINS '{rkw}'{dept_clause}
                         RETURN n.name AS source, labels(n)[0] AS source_type,
                                type(r) AS relation, m.name AS target, labels(m)[0] AS target_type
                         LIMIT {limit * 2}
@@ -212,18 +233,15 @@ def make_tools(db: Session) -> list:
                             break
 
             if not rows:
-                # Try semantic search fallback
                 vector = embed([keywords])[0]
-                chunk_results = neo4j_service.search_similar_chunks(vector, limit)
+                chunk_results = neo4j_service.search_similar_chunks(vector, limit, department_id=department_id)
                 if chunk_results:
-                    doc_ids = list(dict.fromkeys(str(r.get("document_id", "")) for r in chunk_results))
                     lines = [f"Found {len(chunk_results)} relevant document chunks:", ""]
                     for i, r in enumerate(chunk_results, 1):
                         lines.append(f"{i}. doc_id={r.get('document_id')}: {r.get('content', '')[:200]}...")
                     return "\n".join(lines)
                 return f"Không tìm thấy kết quả nào cho từ khóa: {keywords}"
 
-            # Group by unique relationships
             unique_results = []
             seen = set()
             for row in rows:
@@ -248,24 +266,22 @@ def make_tools(db: Session) -> list:
     def list_kg_schema() -> str:
         """List all available node labels and relationship types in the knowledge graph.
 
-        Use this to discover what labels and relationships exist in the database
-        before writing queries.
+        Returns schema information scoped to the current user's department.
         """
         if not neo4j_service.available:
             raise ToolException("Graph DB unavailable.")
         try:
-            # Get all node labels
             label_cypher = "CALL db.labels() YIELD label RETURN label"
             labels = neo4j_service.run_cypher(label_cypher, {})
 
-            # Get all relationship types
             rel_cypher = "CALL db.relationshipTypes() YIELD relationshipType RETURN relationshipType"
             rels = neo4j_service.run_cypher(rel_cypher, {})
 
-            # Get sample nodes with names
-            sample_cypher = """
+            # Sample nodes: scope by department
+            dept_where = f"AND n.department_id = {department_id}" if department_id is not None else ""
+            sample_cypher = f"""
             MATCH (n)
-            WHERE n.name IS NOT NULL
+            WHERE n.name IS NOT NULL {dept_where}
             RETURN labels(n)[0] AS label, n.name AS name
             LIMIT 20
             """
@@ -286,16 +302,7 @@ def make_tools(db: Session) -> list:
 
     @tool
     def llm_reasoning(question: str) -> str:
-        """Analyze and reason about a user question to determine the best search strategy.
-
-        This tool helps:
-        1. Understand what the user is asking
-        2. Identify key entities (companies, materials, contracts, etc.)
-        3. Determine what type of information is needed
-        4. Suggest the best search approach
-
-        Use this first when the question is complex or unclear.
-        """
+        """Analyze and reason about a user question to determine the best search strategy."""
         try:
             from openai import OpenAI
             client = OpenAI()

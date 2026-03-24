@@ -27,6 +27,15 @@ CATEGORY_LABEL_MAP: dict[str, str] = {
     "Biên bản":    "PhieuNhapKho",
     "ChungChi":    "ChungChi",
     "Certificate": "ChungChi",
+    # Knowledge categories → TriThuc
+    "Chung":        "TriThuc",
+    "Hướng dẫn":    "TriThuc",
+    "Tiêu chuẩn":   "TriThuc",
+    "Kinh nghiệm":  "TriThuc",
+    "Kỹ thuật":     "TriThuc",
+    "An toàn":       "TriThuc",
+    "Vật tư":        "VatTu",
+    "Nhà cung cấp":  "NhaCungCap",
 }
 
 
@@ -65,7 +74,8 @@ class Neo4jService:
             raise ValueError(f"Unexpected Neo4j label: {label!r}")
         cypher = (
             f"MERGE (n:{label} {{document_id: $document_id}}) "
-            "SET n.ten = $ten, n.owner = $owner, n.created_at = $created_at"
+            "SET n.ten = $ten, n.owner = $owner, n.created_at = $created_at, "
+            "n.department_id = $department_id"
         )
         with self._driver.session() as session:
             session.run(
@@ -74,6 +84,7 @@ class Neo4jService:
                 ten=doc.get("ten", ""),
                 owner=doc.get("owner", ""),
                 created_at=doc.get("created_at", ""),
+                department_id=doc.get("department_id"),
             )
 
     def create_entity_graph(
@@ -81,14 +92,19 @@ class Neo4jService:
         document_id: int,
         entities: list[dict],
         relationships: list[dict],
+        source_label: str = "Document",
     ) -> None:
         """MERGE domain entities + relationships into Neo4j.
 
-        Links each entity back to its source Document node via MENTIONS.
+        Links each entity back to its source node via MENTIONS.
+        source_label can be "Document" or "TriThuc" (for knowledge entries).
         Silently skips entries with invalid labels or relation types.
         No-op if Neo4j is unavailable.
         """
         if not self.available:
+            return
+        if source_label not in _ALLOWED_LABELS:
+            logger.warning("Invalid source_label=%r for entity graph", source_label)
             return
         with self._driver.session() as session:
             # 1. MERGE entity nodes
@@ -125,14 +141,14 @@ class Neo4jService:
                     target=target,
                 )
 
-            # 3. Link entities to document via MENTIONS (infrastructure edge)
+            # 3. Link entities to source node via MENTIONS (infrastructure edge)
             for entity in entities:
                 label = entity.get("label", "")
                 name = entity.get("name", "")
                 if label not in _ALLOWED_LABELS or not name:
                     continue
                 session.run(
-                    f"MATCH (doc:Document {{document_id: $doc_id}}) "
+                    f"MATCH (doc:{source_label} {{document_id: $doc_id}}) "
                     f"MATCH (e:{label} {{name: $name}}) "
                     "MERGE (doc)-[:MENTIONS]->(e)",
                     doc_id=document_id,
@@ -145,6 +161,7 @@ class Neo4jService:
         chunk_index: int,
         content: str,
         embedding: list[float],
+        department_id: int | None = None,
     ) -> None:
         """Create a DocumentChunk node with embedding for semantic search."""
         if not self.available:
@@ -155,9 +172,10 @@ class Neo4jService:
                 chunk_index: $chunk_index
             })
             SET c.content = $content,
-                c.embedding = $embedding
+                c.embedding = $embedding,
+                c.department_id = $department_id
             WITH c
-            MATCH (d:Document {document_id: $document_id})
+            MATCH (d {document_id: $document_id})
             MERGE (d)-[:HAS_CHUNK]->(c)
         """
         with self._driver.session() as session:
@@ -167,19 +185,34 @@ class Neo4jService:
                 chunk_index=chunk_index,
                 content=content,
                 embedding=embedding,
+                department_id=department_id,
             )
 
     def search_similar_chunks(
         self,
         query_embedding: list[float],
         limit: int = 5,
+        department_id: int | None = None,
     ) -> list[dict]:
-        """Semantic search over DocumentChunk embeddings in Neo4j."""
+        """Semantic search over DocumentChunk embeddings in Neo4j.
+
+        department_id filters to chunks belonging to that department's documents.
+        None = no filter (Admin).
+        """
         if not self.available:
             return []
-        cypher = """
+
+        dept_filter = ""
+        if department_id is not None:
+            dept_filter = (
+                "AND EXISTS { MATCH (d)-[:HAS_CHUNK]->(c) "
+                "WHERE d.department_id = $department_id }"
+            )
+
+        cypher = f"""
             MATCH (c:DocumentChunk)
             WHERE c.embedding IS NOT NULL
+            {dept_filter}
             RETURN c.document_id AS document_id,
                    c.chunk_index AS chunk_index,
                    c.content AS content,
@@ -188,7 +221,12 @@ class Neo4jService:
             LIMIT $limit
         """
         with self._driver.session() as session:
-            result = session.run(cypher, embedding=query_embedding, limit=limit)
+            result = session.run(
+                cypher,
+                embedding=query_embedding,
+                limit=limit,
+                department_id=department_id,
+            )
             return [dict(record) for record in result]
 
     def run_cypher(self, query: str, params: dict | None = None) -> list[dict]:

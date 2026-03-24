@@ -95,33 +95,46 @@ def extract_kg(chunks: list[str], doc) -> dict:
         logger.info("OpenAI client initialized for doc_id=%s, processing %d chunks",
                     getattr(doc, "id", "?"), len(chunks))
 
-        # ── Phase 1: Extract entities from all chunks ───────────────
+        # ── Phase 1: Extract entities from chunks (batched) ────────
         all_entities: list[dict] = []
+        ENTITY_BATCH_SIZE = 20  # ~20 chunks × 512 chars ≈ 10K chars, well within 128K context
 
-        for i, chunk_text in enumerate(chunks):
+        total_batches = (len(chunks) + ENTITY_BATCH_SIZE - 1) // ENTITY_BATCH_SIZE
+        for batch_idx in range(0, len(chunks), ENTITY_BATCH_SIZE):
+            batch_chunks = chunks[batch_idx:batch_idx + ENTITY_BATCH_SIZE]
+            batch_text = "\n\n---\n\n".join(batch_chunks)
+            batch_num = batch_idx // ENTITY_BATCH_SIZE + 1
+
             user_prompt = (
                 f"Document name: {doc.name}\n"
                 f"Document category: {doc.category}\n\n"
-                f"Extract ONLY entities (no relationships) from this text chunk.\n\n"
-                f"Text chunk {i+1}/{len(chunks)}:\n{chunk_text}"
+                f"Extract ONLY entities (no relationships) from the following text "
+                f"(batch {batch_num}/{total_batches}, {len(batch_chunks)} sections).\n\n"
+                f"Text:\n{batch_text}"
             )
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": _ENTITY_ONLY_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-            )
-            data = json.loads(response.choices[0].message.content)
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4o",
+                    response_format={"type": "json_object"},
+                    messages=[
+                        {"role": "system", "content": _ENTITY_ONLY_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                )
+                data = json.loads(response.choices[0].message.content)
 
-            for e in data.get("entities", []):
-                if isinstance(e, dict) and e.get("name") and e.get("label") in _DOMAIN_LABELS:
-                    if not any(x["name"] == e["name"] and x["label"] == e["label"] for x in all_entities):
-                        all_entities.append(e)
+                batch_count = 0
+                for e in data.get("entities", []):
+                    if isinstance(e, dict) and e.get("name") and e.get("label") in _DOMAIN_LABELS:
+                        if not any(x["name"] == e["name"] and x["label"] == e["label"] for x in all_entities):
+                            all_entities.append(e)
+                            batch_count += 1
 
-            logger.info("Phase 1 - Chunk %d/%d: extracted %d entities",
-                        i+1, len(chunks), len(data.get("entities", [])))
+                logger.info("Phase 1 - Batch %d/%d (%d chunks): +%d entities (total: %d)",
+                            batch_num, total_batches, len(batch_chunks), batch_count, len(all_entities))
+            except Exception as e:
+                logger.warning("Phase 1 batch %d failed: %s", batch_num, e)
+                continue
 
         if not all_entities:
             logger.warning("No entities extracted for doc_id=%s", getattr(doc, "id", "?"))

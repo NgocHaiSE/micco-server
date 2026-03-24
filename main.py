@@ -23,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from database import engine, Base
 from routers import auth, documents, dashboard, chat, admin
-from routers import ingest
+from routers import ingest, knowledge, approvals
 from services.neo4j_service import neo4j_service
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,8 @@ app.include_router(dashboard.router)
 app.include_router(chat.router)
 app.include_router(admin.router)
 app.include_router(ingest.router)
+app.include_router(knowledge.router)
+app.include_router(approvals.router)
 
 
 @app.get("/api/health")

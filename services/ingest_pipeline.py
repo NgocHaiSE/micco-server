@@ -61,6 +61,7 @@ def run(document_id: int) -> None:
             "ten": doc.name,
             "owner": doc.owner_name,
             "created_at": doc.created_at.isoformat() if doc.created_at else "",
+            "department_id": doc.department_id,
         })
 
         # ── Unstructured path: text extraction → chunk → embed ─────────────
@@ -112,21 +113,23 @@ def run(document_id: int) -> None:
                 db.execute(
                     text("""
                         INSERT INTO document_chunks
-                            (document_id, chunk_index, content, embedding, token_count)
+                            (source_type, source_id, chunk_index, content, embedding, token_count, department_id)
                         VALUES
-                            (:document_id, :chunk_index, :content,
-                             CAST(:embedding AS vector), :token_count)
-                        ON CONFLICT (document_id, chunk_index)
+                            ('document', :source_id, :chunk_index, :content,
+                             CAST(:embedding AS vector), :token_count, :department_id)
+                        ON CONFLICT (source_type, source_id, chunk_index)
                         DO UPDATE SET
-                            content   = EXCLUDED.content,
-                            embedding = EXCLUDED.embedding
+                            content       = EXCLUDED.content,
+                            embedding     = EXCLUDED.embedding,
+                            department_id = EXCLUDED.department_id
                     """),
                     {
-                        "document_id": document_id,
+                        "source_id": document_id,
                         "chunk_index": chunk["chunk_index"],
                         "content": chunk["content"],
                         "embedding": str(vector),
                         "token_count": len(chunk["content"].split()),
+                        "department_id": doc.department_id,
                     },
                 )
                 # Sync DocumentChunk to Neo4j with embedding
@@ -135,6 +138,7 @@ def run(document_id: int) -> None:
                     chunk_index=chunk["chunk_index"],
                     content=chunk["content"],
                     embedding=vector,
+                    department_id=doc.department_id,
                 )
             db.commit()
 

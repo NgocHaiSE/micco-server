@@ -1,8 +1,8 @@
 -- ═══════════════════════════════════════════════════════════════
--- DocVault AI — Database Schema v2
+-- DocVault AI — Database Schema v3
 -- Target: PostgreSQL (TimescaleDB)
--- Changes: + departments, + department access control,
---          + document_chunks (embedding/RAG)
+-- Changes: + knowledge_entries, unified document_chunks
+--          (source_type/source_id), department scoping
 -- ═══════════════════════════════════════════════════════════════
 
 -- ─── Extensions ─────────────────────────────────────────────
@@ -13,6 +13,7 @@ CREATE EXTENSION IF NOT EXISTS "vector";  -- pgvector for embeddings
 -- ─── Drop existing tables (safe re-run) ─────────────────────
 DROP TABLE IF EXISTS document_chunks CASCADE;
 DROP TABLE IF EXISTS chat_messages CASCADE;
+DROP TABLE IF EXISTS knowledge_entries CASCADE;
 DROP TABLE IF EXISTS documents CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 DROP TABLE IF EXISTS departments CASCADE;
@@ -39,7 +40,7 @@ CREATE TABLE users (
     name            VARCHAR(100)  NOT NULL,
     email           VARCHAR(255)  NOT NULL UNIQUE,
     hashed_password VARCHAR(255)  NOT NULL,
-    role            VARCHAR(50)   NOT NULL DEFAULT 'Member',
+    role            VARCHAR(50)   NOT NULL DEFAULT 'Nhân viên',
     department_id   INTEGER       REFERENCES departments(id) ON DELETE SET NULL,
     avatar          VARCHAR(500),
     created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW()
@@ -62,6 +63,8 @@ CREATE TABLE documents (
     owner_id        INTEGER       NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     department_id   INTEGER       REFERENCES departments(id) ON DELETE SET NULL,
     tags            JSONB         NOT NULL DEFAULT '[]'::jsonb,
+    thumbnail       VARCHAR(500),
+    visibility      VARCHAR(20)   NOT NULL DEFAULT 'internal',
     status          VARCHAR(20)   NOT NULL DEFAULT 'Active',
     file_path       VARCHAR(500),
     ingest_status   VARCHAR(20)   DEFAULT 'pending',
@@ -80,25 +83,59 @@ CREATE INDEX idx_documents_name_trgm  ON documents (LOWER(name) varchar_pattern_
 
 COMMENT ON TABLE documents IS 'Uploaded documents with metadata, file references, and department ownership';
 
--- ─── Document Chunks (for text embedding / RAG) ─────────────
+-- ─── Knowledge Entries ──────────────────────────────────────
+CREATE TABLE knowledge_entries (
+    id              SERIAL PRIMARY KEY,
+    title           VARCHAR(500)  NOT NULL,
+    content_html    TEXT          NOT NULL,
+    content_text    TEXT          NOT NULL,
+    category        VARCHAR(100)  NOT NULL DEFAULT 'Chung',
+    tags            JSONB         NOT NULL DEFAULT '[]'::jsonb,
+    owner_id        INTEGER       NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    department_id   INTEGER       REFERENCES departments(id) ON DELETE SET NULL,
+    visibility      VARCHAR(20)   NOT NULL DEFAULT 'internal',
+    status          VARCHAR(20)   NOT NULL DEFAULT 'Active',
+    ingest_status   VARCHAR(20)   DEFAULT 'pending',
+    ingest_error    TEXT,
+    created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_knowledge_owner      ON knowledge_entries (owner_id);
+CREATE INDEX idx_knowledge_department  ON knowledge_entries (department_id);
+CREATE INDEX idx_knowledge_category    ON knowledge_entries (category);
+CREATE INDEX idx_knowledge_visibility  ON knowledge_entries (visibility);
+CREATE INDEX idx_knowledge_status      ON knowledge_entries (status);
+CREATE INDEX idx_knowledge_updated     ON knowledge_entries (updated_at DESC);
+CREATE INDEX idx_knowledge_tags        ON knowledge_entries USING GIN (tags);
+
+COMMENT ON TABLE knowledge_entries IS 'Manually entered knowledge base entries with WYSIWYG HTML content';
+
+-- ─── Document Chunks (unified: documents + knowledge) ───────
+-- Polymorphic: source_type ('document'|'knowledge') + source_id
+-- Single ivfflat index covers all embeddings for chatbot search.
 CREATE TABLE document_chunks (
     id              SERIAL PRIMARY KEY,
-    document_id     INTEGER       NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    source_type     VARCHAR(20)   NOT NULL DEFAULT 'document',
+    source_id       INTEGER       NOT NULL,
     chunk_index     INTEGER       NOT NULL,
     content         TEXT          NOT NULL,
     embedding       vector(1024),   -- bge-m3 dimension
     token_count     INTEGER       DEFAULT 0,
+    department_id   INTEGER       REFERENCES departments(id) ON DELETE SET NULL,
     metadata        JSONB         DEFAULT '{}'::jsonb,
     created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
 
-    UNIQUE (document_id, chunk_index)
+    CONSTRAINT uq_chunks_source UNIQUE (source_type, source_id, chunk_index)
 );
 
-CREATE INDEX idx_chunks_document   ON document_chunks (document_id);
-CREATE INDEX idx_chunks_embedding  ON document_chunks USING ivfflat (embedding vector_cosine_ops)
+CREATE INDEX idx_chunks_source_type ON document_chunks (source_type);
+CREATE INDEX idx_chunks_source      ON document_chunks (source_type, source_id);
+CREATE INDEX idx_chunks_department   ON document_chunks (department_id);
+CREATE INDEX idx_chunks_embedding   ON document_chunks USING ivfflat (embedding vector_cosine_ops)
     WITH (lists = 100);
 
-COMMENT ON TABLE document_chunks IS 'Text chunks with vector embeddings for semantic search (RAG)';
+COMMENT ON TABLE document_chunks IS 'Unified text chunks with vector embeddings for semantic search (RAG) — covers both documents and knowledge entries';
 
 -- ─── Chat Messages ──────────────────────────────────────────
 CREATE TABLE chat_messages (
@@ -274,7 +311,7 @@ $$ LANGUAGE plpgsql;
 COMMENT ON FUNCTION delete_document IS 'Delete a document and return its file path for filesystem cleanup';
 
 
--- ─── Semantic Search via Embeddings ─────────────────────────
+-- ─── Semantic Search via Embeddings (unified + dept-scoped) ─
 CREATE OR REPLACE FUNCTION search_chunks_by_embedding(
     p_query_embedding vector(1024),
     p_department_id   INTEGER DEFAULT NULL,
@@ -282,8 +319,9 @@ CREATE OR REPLACE FUNCTION search_chunks_by_embedding(
 )
 RETURNS TABLE (
     chunk_id        INTEGER,
-    document_id     INTEGER,
-    document_name   VARCHAR(255),
+    source_type     VARCHAR(20),
+    source_id       INTEGER,
+    source_name     TEXT,
     chunk_content   TEXT,
     similarity      FLOAT
 ) AS $$
@@ -291,21 +329,25 @@ BEGIN
     RETURN QUERY
     SELECT
         dc.id               AS chunk_id,
-        dc.document_id,
-        d.name              AS document_name,
+        dc.source_type,
+        dc.source_id,
+        COALESCE(d.name, ke.title, 'Unknown')::TEXT AS source_name,
         dc.content          AS chunk_content,
         1 - (dc.embedding <=> p_query_embedding)::FLOAT AS similarity
     FROM document_chunks dc
-    JOIN documents d ON dc.document_id = d.id
+    LEFT JOIN documents d
+        ON dc.source_type = 'document' AND dc.source_id = d.id
+    LEFT JOIN knowledge_entries ke
+        ON dc.source_type = 'knowledge' AND dc.source_id = ke.id
     WHERE
         dc.embedding IS NOT NULL
-        AND (p_department_id IS NULL OR d.department_id = p_department_id)
+        AND (p_department_id IS NULL OR dc.department_id = p_department_id)
     ORDER BY dc.embedding <=> p_query_embedding ASC
     LIMIT p_limit;
 END;
 $$ LANGUAGE plpgsql;
 
-COMMENT ON FUNCTION search_chunks_by_embedding IS 'Semantic search: find most similar text chunks by vector distance, optionally scoped to a department';
+COMMENT ON FUNCTION search_chunks_by_embedding IS 'Semantic search across documents + knowledge — filtered by department_id on chunks';
 
 
 -- ─── Get User Chat History ──────────────────────────────────
@@ -390,5 +432,5 @@ ON CONFLICT (name) DO NOTHING;
 -- ═══════════════════════════════════════════════════════════════
 DO $$
 BEGIN
-    RAISE NOTICE '✅ Schema v2 created: 5 tables (departments, users, documents, document_chunks, chat_messages), 9 functions, seed data inserted';
+    RAISE NOTICE '✅ Schema v3 created: 6 tables (departments, users, documents, knowledge_entries, document_chunks, chat_messages), 9 functions, seed data inserted';
 END $$;

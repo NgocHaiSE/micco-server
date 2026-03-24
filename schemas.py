@@ -59,6 +59,9 @@ class DocumentResponse(BaseModel):
     date: str
     tags: list[str]
     thumbnail: Optional[str] = None
+    visibility: str = "internal"
+    approval_status: str = "pending_approval"
+    approval_note: Optional[str] = None
     status: str
 
     class Config:
@@ -96,6 +99,51 @@ class StorageDataPoint(BaseModel):
     type: str
     size: float
     fill: str
+
+
+# ─── Chat Schemas ────────────────────────────────────────────
+
+# ─── Knowledge Schemas ──────────────────────────────────────
+
+class KnowledgeCreateRequest(BaseModel):
+    title: str
+    content_html: str
+    content_text: str
+    category: str = "Chung"
+    tags: list[str] = []
+    visibility: str = "internal"
+    status: str = "Active"
+
+
+class KnowledgeUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    content_html: Optional[str] = None
+    content_text: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[list[str]] = None
+    visibility: Optional[str] = None
+    status: Optional[str] = None
+
+
+class KnowledgeResponse(BaseModel):
+    id: int
+    title: str
+    content_html: str
+    content_text: str
+    category: str
+    tags: list[str]
+    owner: str
+    department: Optional[str] = None
+    visibility: str = "internal"
+    approval_status: str = "pending_approval"
+    approval_note: Optional[str] = None
+    status: str
+    ingest_status: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 # ─── Chat Schemas ────────────────────────────────────────────

@@ -27,8 +27,9 @@ def send_message(
     db.add(user_msg)
     db.commit()
 
-    # Run agent
-    result = run_agent(req.message, db)
+    # Run agent — scope by department (Admin sees all)
+    dept_id = None if current_user.role == "Admin" else current_user.department_id
+    result = run_agent(req.message, db, department_id=dept_id)
 
     ai_msg = ChatMessage(
         user_id=current_user.id,
